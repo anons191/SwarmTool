@@ -1,0 +1,285 @@
+#!/usr/bin/env bash
+# ╔═══════════════════════════════════════════════════════════════════════════╗
+# ║  swarmtool -- Multi-agent orchestration for Claude Code                  ║
+# ║  Dumb workers, smart orchestration.                                      ║
+# ╚═══════════════════════════════════════════════════════════════════════════╝
+set -euo pipefail
+
+# ── Resolve Installation Directory ──────────────────────────────────────────
+# Follow symlinks to find the real script location
+SWARMTOOL_DIR="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")" && pwd)"
+
+# ── Source Libraries ────────────────────────────────────────────────────────
+source "${SWARMTOOL_DIR}/lib/core.sh"
+source "${SWARMTOOL_DIR}/lib/config.sh"
+source "${SWARMTOOL_DIR}/lib/state.sh"
+source "${SWARMTOOL_DIR}/lib/taskspec.sh"
+source "${SWARMTOOL_DIR}/lib/scale.sh"
+source "${SWARMTOOL_DIR}/lib/cleanup.sh"
+
+# Source optional modules (loaded as they are built)
+[[ -f "${SWARMTOOL_DIR}/lib/prompt.sh" ]]      && source "${SWARMTOOL_DIR}/lib/prompt.sh"
+[[ -f "${SWARMTOOL_DIR}/lib/planner.sh" ]]     && source "${SWARMTOOL_DIR}/lib/planner.sh"
+[[ -f "${SWARMTOOL_DIR}/lib/worker.sh" ]]      && source "${SWARMTOOL_DIR}/lib/worker.sh"
+[[ -f "${SWARMTOOL_DIR}/lib/judge.sh" ]]       && source "${SWARMTOOL_DIR}/lib/judge.sh"
+[[ -f "${SWARMTOOL_DIR}/lib/merge.sh" ]]       && source "${SWARMTOOL_DIR}/lib/merge.sh"
+[[ -f "${SWARMTOOL_DIR}/lib/interactive.sh" ]]  && source "${SWARMTOOL_DIR}/lib/interactive.sh"
+[[ -f "${SWARMTOOL_DIR}/lib/resume.sh" ]]      && source "${SWARMTOOL_DIR}/lib/resume.sh"
+
+# ── CLI Argument Parsing ────────────────────────────────────────────────────
+GOAL=""
+RESUME_RUN_ID=""
+DRY_RUN=false
+VERBOSE=false
+SHOW_CONFIG=false
+LIST_RUNS=false
+
+usage() {
+    cat <<EOF
+${BOLD}swarmtool${NC} v${SWARMTOOL_VERSION} -- Multi-agent orchestration for Claude Code
+
+${BOLD}USAGE${NC}
+    swarmtool [OPTIONS] [GOAL]
+
+${BOLD}DESCRIPTION${NC}
+    Orchestrates multiple Claude Code agents to work on a goal in parallel.
+    Uses a two-tier architecture: a Planner decomposes the goal into isolated
+    tasks, Workers execute them in git worktrees, and a Judge evaluates results.
+
+${BOLD}OPTIONS${NC}
+    --goal <text>         Set the goal (alternative to positional argument)
+    --resume <run-id>     Resume an interrupted run
+    --list                List all runs and their status
+    --max-workers <n>     Set max concurrent workers (default: auto)
+    --planner-model <m>   Model for planner (default: opus)
+    --worker-model <m>    Model for workers (default: sonnet)
+    --judge-model <m>     Model for judge (default: sonnet)
+    --budget <usd>        Total budget cap in USD (default: 20.00)
+    --dry-run             Show plan without executing
+    --verbose             Show detailed output including resource detection
+    --config              Show current configuration and exit
+    --help                Show this help message
+
+${BOLD}EXAMPLES${NC}
+    swarmtool "Add user authentication with JWT"
+    swarmtool --goal "Refactor the database layer" --max-workers 3
+    swarmtool --resume abc12345
+    swarmtool --list
+
+${BOLD}ARCHITECTURE${NC}
+    Planner (opus)  -->  Creates isolated task specs
+    Workers (sonnet) -->  Execute in git worktrees, no coordination
+    Judge (sonnet)  -->  Automated checks + AI evaluation
+    Merge           -->  Auto-merge + conflict resolution
+
+${BOLD}CONFIGURATION${NC}
+    Config precedence: defaults.conf < .swarmtool/config < env vars < CLI flags
+    See defaults.conf for all configurable options.
+
+EOF
+}
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --help|-h)
+            usage
+            exit 0
+            ;;
+        --goal)
+            GOAL="$2"
+            shift 2
+            ;;
+        --resume)
+            RESUME_RUN_ID="$2"
+            shift 2
+            ;;
+        --list)
+            LIST_RUNS=true
+            shift
+            ;;
+        --dry-run)
+            DRY_RUN=true
+            shift
+            ;;
+        --verbose|-v)
+            VERBOSE=true
+            shift
+            ;;
+        --config)
+            SHOW_CONFIG=true
+            shift
+            ;;
+        --max-workers|--planner-model|--worker-model|--judge-model|--budget|--state-dir)
+            apply_cli_overrides "$1" "$2"
+            shift 2
+            ;;
+        -*)
+            die "Unknown option: $1. Use --help for usage."
+            ;;
+        *)
+            # Positional argument = goal
+            if [[ -z "$GOAL" ]]; then
+                GOAL="$1"
+            else
+                die "Unexpected argument: $1. Goal already set."
+            fi
+            shift
+            ;;
+    esac
+done
+
+# ── Load Configuration ──────────────────────────────────────────────────────
+load_config "$SWARMTOOL_DIR"
+
+# ── Handle Simple Commands ──────────────────────────────────────────────────
+
+if [[ "$SHOW_CONFIG" == "true" ]]; then
+    dump_config
+    exit 0
+fi
+
+if [[ "$LIST_RUNS" == "true" ]]; then
+    list_runs
+    exit 0
+fi
+
+# ── Prerequisites ───────────────────────────────────────────────────────────
+check_prerequisites
+
+# ── Setup Signal Handlers ───────────────────────────────────────────────────
+setup_signal_handlers
+
+# ── Resume Mode ─────────────────────────────────────────────────────────────
+if [[ -n "$RESUME_RUN_ID" ]]; then
+    if type resume_run &>/dev/null; then
+        resume_run "$RESUME_RUN_ID"
+    else
+        die "Resume module not yet available. Build Phase 7 first."
+    fi
+    exit $?
+fi
+
+# ── Interactive Mode ────────────────────────────────────────────────────────
+
+print_header "swarmtool v${SWARMTOOL_VERSION}"
+
+# Step 1: Capture goal
+if [[ -z "$GOAL" ]]; then
+    echo ""
+    printf "${BOLD}What would you like to accomplish?${NC}\n"
+    printf "> "
+    read -r GOAL
+    echo ""
+
+    if [[ -z "$GOAL" ]]; then
+        die "No goal provided. Exiting."
+    fi
+fi
+
+echo "Goal: ${GOAL}"
+echo ""
+
+# Step 2: Initialize run
+RUN_ID=$(generate_id)
+RUN_DIR=$(init_run_dir "$RUN_ID" "$GOAL")
+CURRENT_RUN_ID="$RUN_ID"
+CURRENT_RUN_DIR="$RUN_DIR"
+
+log "$RUN_ID" "INIT" "Run initialized: $GOAL"
+
+if [[ "$VERBOSE" == "true" ]]; then
+    dump_config
+    display_resources
+fi
+
+# Step 3: Planning phase
+log "$RUN_ID" "MAIN" "Starting planning phase"
+set_run_state "$RUN_DIR" "planning"
+
+if type run_planning_phase &>/dev/null; then
+    run_planning_phase "$RUN_ID" "$RUN_DIR" "$GOAL"
+else
+    log_warn "Planner module not yet available. Create tasks manually in ${RUN_DIR}/tasks/"
+    echo ""
+    echo "The planner module is not yet built."
+    echo "To continue development, manually create .spec files in:"
+    echo "  ${RUN_DIR}/tasks/"
+    echo ""
+    echo "Run ID: ${RUN_ID}"
+    exit 0
+fi
+
+# Step 4: Interactive review
+if type run_review_phase &>/dev/null; then
+    run_review_phase "$RUN_ID" "$RUN_DIR"
+else
+    # Fallback: show tasks and ask for approval
+    display_all_tasks "$RUN_DIR"
+    printf "Approve and execute? [y/N] "
+    read -r reply
+    if [[ ! "$reply" =~ ^[Yy]$ ]]; then
+        echo "Aborted."
+        exit 0
+    fi
+fi
+
+set_run_state "$RUN_DIR" "approved"
+log "$RUN_ID" "MAIN" "Plan approved"
+
+# Step 5: Dry run check
+if [[ "$DRY_RUN" == "true" ]]; then
+    echo ""
+    log_info "Dry run mode. Skipping execution."
+    display_all_tasks "$RUN_DIR"
+    exit 0
+fi
+
+# Step 6: Execution phase
+log "$RUN_ID" "MAIN" "Starting execution phase"
+set_run_state "$RUN_DIR" "executing"
+
+if type run_execution_phase &>/dev/null; then
+    run_execution_phase "$RUN_ID" "$RUN_DIR"
+else
+    die "Execution module not yet available. Build Phase 4 first."
+fi
+
+# Step 7: Judging phase
+log "$RUN_ID" "MAIN" "Starting judging phase"
+set_run_state "$RUN_DIR" "judging"
+
+if type run_judging_phase &>/dev/null; then
+    run_judging_phase "$RUN_ID" "$RUN_DIR"
+else
+    log_warn "Judge module not yet available. Skipping evaluation."
+    # Mark all done tasks as judged (pass by default)
+    for task_id in $(list_tasks_by_status "$RUN_DIR" "done"); do
+        echo "VERDICT=pass" > "${RUN_DIR}/tasks/${task_id}.judge"
+    done
+fi
+
+# Step 8: Merge phase
+log "$RUN_ID" "MAIN" "Starting merge phase"
+set_run_state "$RUN_DIR" "merging"
+
+if type run_merge_phase &>/dev/null; then
+    run_merge_phase "$RUN_ID" "$RUN_DIR"
+else
+    die "Merge module not yet available. Build Phase 6 first."
+fi
+
+# Step 9: Complete
+set_run_state "$RUN_DIR" "complete"
+log "$RUN_ID" "MAIN" "Run complete"
+
+# Summary
+echo ""
+print_header "Run Complete"
+display_progress "$RUN_DIR"
+echo ""
+echo "Run ID: ${RUN_ID}"
+echo "Logs:   ${RUN_DIR}/run.log"
+
+# Cleanup
+cleanup_run "$RUN_DIR"

@@ -1,0 +1,17 @@
+# Evaluate Task: {{TITLE}}
+
+## Task ID
+{{TASK_ID}}
+
+## Success Criteria
+{{SUCCESS_CRITERIA}}
+
+## Instructions
+1. Review the git diff to see what changes the worker made.
+2. Read the modified files to understand the full context of the changes.
+3. Check each success criterion against the actual implementation.
+4. Identify any boundary violations or unintended changes.
+5. Provide your verdict as JSON.
+
+Use `git diff HEAD~1` to see the worker's changes.
+Use `Read` to examine specific files in detail.

@@ -1,0 +1,19 @@
+# Goal
+
+{{GOAL}}
+
+# Instructions
+
+1. Explore the codebase to understand its structure, patterns, and conventions.
+2. Analyze the goal and determine what changes are needed.
+3. Decompose the goal into independent, parallelizable tasks.
+4. For each task, identify the MINIMUM set of input files needed.
+5. Define clear boundaries so workers stay focused.
+6. Output your plan as a JSON object matching the required schema.
+
+Remember:
+- Workers are isolated. They cannot see each other's work or the broader project context.
+- Workers operate in their own git worktree (a full copy of the repo at the current commit).
+- Each worker only knows about its specific task. Do not reference other tasks in descriptions.
+- Prefer more, smaller tasks over fewer, larger ones (within reason).
+- If tasks must happen in sequence, use the "depends_on" field.

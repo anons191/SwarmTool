@@ -1,0 +1,23 @@
+# Task: {{TITLE}}
+
+## Description
+{{DESCRIPTION}}
+
+## Input Files (start by reading these)
+{{INPUT_FILES}}
+
+## Expected Output
+{{EXPECTED_OUTPUT}}
+
+## Success Criteria
+{{SUCCESS_CRITERIA}}
+
+## Boundaries (DO NOT violate these)
+{{BOUNDARIES}}
+
+## Instructions
+1. Read the input files listed above to understand the current code.
+2. Implement the changes described in the description.
+3. Verify your changes meet all success criteria.
+4. Do not make changes outside the boundaries specified above.
+5. When done, ensure all files are saved. Do not run git commands.

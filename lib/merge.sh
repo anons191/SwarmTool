@@ -13,9 +13,13 @@ _SWARMTOOL_MERGE_LOADED=1
 determine_merge_order() {
     local run_dir="$1"
 
+    # Convert to absolute path
+    local abs_run_dir
+    abs_run_dir=$(cd "$run_dir" 2>/dev/null && pwd) || abs_run_dir="$run_dir"
+
     # Collect tasks that passed judging
     local passed_tasks=()
-    for judge_file in "${run_dir}/tasks/"*.judge; do
+    for judge_file in "${abs_run_dir}/tasks/"*.judge; do
         [[ -f "$judge_file" ]] || continue
         local verdict
         verdict=$(grep "^VERDICT=" "$judge_file" | cut -d'=' -f2-)
@@ -40,7 +44,7 @@ determine_merge_order() {
         local next_remaining=()
 
         for task_id in "${remaining[@]}"; do
-            local spec_file="${run_dir}/tasks/${task_id}.spec"
+            local spec_file="${abs_run_dir}/tasks/${task_id}.spec"
             local deps
             deps=$(taskspec_get "$spec_file" "TASK_DEPENDS_ON")
 

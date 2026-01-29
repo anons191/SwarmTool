@@ -21,18 +21,18 @@ run_review_phase() {
 
         local task_count
         task_count=$(count_tasks "$run_dir")
-        echo "  ${BOLD}${task_count} tasks total${NC}"
+        printf "  ${BOLD}%s tasks total${NC}\n" "$task_count"
         echo ""
 
         echo "Options:"
-        echo "  ${BOLD}a${NC} - Approve and execute all tasks"
-        echo "  ${BOLD}v${NC} - View task details"
-        echo "  ${BOLD}e${NC} - Edit a task in \$EDITOR"
-        echo "  ${BOLD}d${NC} - Delete a task"
-        echo "  ${BOLD}n${NC} - Add a new task manually"
-        echo "  ${BOLD}r${NC} - Re-plan (send feedback to planner)"
-        echo "  ${BOLD}p${NC} - View full plan"
-        echo "  ${BOLD}q${NC} - Quit without executing"
+        printf "  ${BOLD}a${NC} - Approve and execute all tasks\n"
+        printf "  ${BOLD}v${NC} - View task details\n"
+        printf "  ${BOLD}e${NC} - Edit a task in \$EDITOR\n"
+        printf "  ${BOLD}d${NC} - Delete a task\n"
+        printf "  ${BOLD}n${NC} - Add a new task manually\n"
+        printf "  ${BOLD}r${NC} - Re-plan (send feedback to planner)\n"
+        printf "  ${BOLD}p${NC} - View full plan\n"
+        printf "  ${BOLD}q${NC} - Quit without executing\n"
         echo ""
         printf "Choice: "
         read -r choice
@@ -40,7 +40,7 @@ run_review_phase() {
         case "$choice" in
             a|A)
                 echo ""
-                printf "Execute ${BOLD}${task_count}${NC} tasks? [y/N] "
+                printf "Execute ${BOLD}%s${NC} tasks? [y/N] " "$task_count"
                 read -r confirm
                 if [[ "$confirm" =~ ^[Yy]$ ]]; then
                     return 0

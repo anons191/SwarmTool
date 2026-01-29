@@ -56,6 +56,17 @@ launch_worker() {
     log "$run_id" "WORKER" "Starting task: ${task_id} ($(taskspec_get "$spec_file" "TASK_TITLE"))"
 
     # ── Step 1: Set up git worktree ───────────────────────────────────────
+    # Clean up any existing worktree at this path (from failed previous runs)
+    if [[ -d "$worktree_path" ]]; then
+        git worktree remove --force "$worktree_path" 2>/dev/null || rm -rf "$worktree_path"
+    fi
+
+    # Remove branch if it exists (from failed previous runs)
+    git branch -D "$task_branch" 2>/dev/null || true
+
+    # Prune stale worktree references
+    git worktree prune 2>/dev/null || true
+
     # Create the branch from base commit
     git branch "$task_branch" "$base_commit" 2>/dev/null || true
 
@@ -65,7 +76,7 @@ launch_worker() {
     if ! git worktree add "$worktree_path" "$task_branch" 2>>"$log_file"; then
         log "$run_id" "WORKER" "FAILED to create worktree for ${task_id}"
         set_task_status "$run_dir" "$task_id" "failed"
-        echo "Worktree creation failed" > "$result_file"
+        echo "Worktree creation failed. Check ${log_file} for details." > "$result_file"
         return 1
     fi
 

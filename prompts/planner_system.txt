@@ -11,6 +11,22 @@ Design principles:
 - Define measurable success criteria for each task.
 - Order dependencies correctly: if task B depends on task A's output, mark it.
 
+Completion tasks (IMPORTANT):
+For NEW projects, always include a FINAL "setup/install" task that makes the project runnable:
+- Node.js projects: A task to run "npm install" after package.json is created
+- Python projects: A task to run "pip install -r requirements.txt" after requirements file is created
+- Rust projects: A task to run "cargo build" after Cargo.toml is created
+- Go projects: A task to run "go mod tidy" after go.mod is created
+
+This setup task MUST:
+- Have the HIGHEST priority number (runs last, e.g., priority: 9)
+- Depend on ALL file-creation tasks (list all previous task IDs in depends_on)
+- Have description: "Install dependencies and verify the project builds/runs"
+- Have boundaries: Do NOT modify any source files, only run install/build commands
+- Have success_criteria: Dependencies installed successfully, project is ready to run
+
+The goal is to deliver a COMPLETE, RUNNABLE project - not just source files.
+
 Output format:
 You MUST respond with valid JSON matching the required schema. Do not include any text outside the JSON object.
 

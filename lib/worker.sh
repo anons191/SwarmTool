@@ -194,6 +194,15 @@ launch_worker() {
     echo "" >> "$log_file"
 
     if [[ $claude_exit_code -eq 0 ]]; then
+        # ── ACQUIRE GIT LOCK for change detection and commit ──
+        # This prevents race conditions when multiple workers detect/commit simultaneously
+        acquire_git_lock
+
+        # First, verify files actually exist on disk (not just via git)
+        local files_on_disk
+        files_on_disk=$(ls -A "$abs_worktree" 2>/dev/null | grep -v "^\.git$" || echo "")
+        echo "Files on disk (excluding .git): ${files_on_disk:-none}" >> "$log_file"
+
         # Check if the worker made any file changes
         local changes_made=""
         changes_made=$(cd "$abs_worktree" && git diff --stat HEAD 2>/dev/null || echo "")
@@ -206,7 +215,7 @@ launch_worker() {
         echo "Changes detected: '${changes_made}'" >> "$log_file"
         echo "Untracked files: '${untracked}'" >> "$log_file"
 
-        if [[ -n "$changes_made" || -n "$untracked" ]]; then
+        if [[ -n "$changes_made" || -n "$untracked" || -n "$files_on_disk" ]]; then
             # Commit the worker's changes
             (
                 cd "$abs_worktree" || exit 1
@@ -215,9 +224,11 @@ launch_worker() {
                     --author="swarmtool <swarmtool@local>" \
                     2>>"${ORIGINAL_PWD}/${log_file}" || true
             )
+            release_git_lock
             set_task_status "$run_dir" "$task_id" "done"
             log "$run_id" "WORKER" "Task ${task_id} completed with changes"
         else
+            release_git_lock
             set_task_status "$run_dir" "$task_id" "done"
             log "$run_id" "WORKER" "Task ${task_id} completed (no file changes)"
         fi

@@ -14,6 +14,18 @@ run_review_phase() {
     local run_id="$1"
     local run_dir="$2"
 
+    # If --auto-approve was passed, skip interactive review
+    if [[ "${AUTO_APPROVE:-false}" == "true" ]]; then
+        echo ""
+        print_header "Task Review (Auto-approved)"
+        display_all_tasks "$run_dir"
+        local task_count
+        task_count=$(count_tasks "$run_dir")
+        printf "  ${BOLD}%s tasks total${NC}\n" "$task_count"
+        printf "${DIM}Auto-approve enabled. Proceeding to execution...${NC}\n"
+        return 0
+    fi
+
     while true; do
         echo ""
         print_header "Task Review"

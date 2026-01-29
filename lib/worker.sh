@@ -34,6 +34,36 @@ invoke_claude_with_retry() {
     return 1
 }
 
+# ── Git Lock for Thread Safety ─────────────────────────────────────────────
+
+# Acquire a lock for git operations (prevents race conditions)
+# Usage: acquire_git_lock
+acquire_git_lock() {
+    local lock_file="/tmp/swarmtool-git.lock"
+    local max_wait=30
+    local waited=0
+
+    while [[ $waited -lt $max_wait ]]; do
+        if mkdir "$lock_file" 2>/dev/null; then
+            # Got the lock
+            return 0
+        fi
+        sleep 0.5
+        waited=$((waited + 1))
+    done
+
+    # Timeout - force acquire by removing stale lock
+    rm -rf "$lock_file"
+    mkdir "$lock_file" 2>/dev/null || true
+    return 0
+}
+
+# Release the git lock
+# Usage: release_git_lock
+release_git_lock() {
+    rm -rf "/tmp/swarmtool-git.lock"
+}
+
 # ── Worker Lifecycle ────────────────────────────────────────────────────────
 
 # Launch a worker for a single task
@@ -55,9 +85,15 @@ launch_worker() {
     local result_file="${run_dir}/tasks/${task_id}.result"
     local log_file="${run_dir}/tasks/${task_id}.log"
 
+    # Convert run_dir to absolute path for logging
+    local abs_run_dir
+    abs_run_dir=$(cd "$run_dir" 2>/dev/null && pwd) || abs_run_dir="$run_dir"
+
     log "$run_id" "WORKER" "Starting task: ${task_id} ($(taskspec_get "$spec_file" "TASK_TITLE"))"
 
-    # ── Step 1: Set up git worktree ───────────────────────────────────────
+    # ── Step 1: Set up git worktree (with lock to prevent race conditions) ──
+    acquire_git_lock
+
     # Clean up any existing worktree at this path (from failed previous runs)
     if [[ -d "$worktree_path" ]]; then
         git worktree remove --force "$worktree_path" 2>/dev/null || rm -rf "$worktree_path"
@@ -76,14 +112,22 @@ launch_worker() {
     mkdir -p "$(dirname "$worktree_path")"
 
     if ! git worktree add "$worktree_path" "$task_branch" 2>>"$log_file"; then
+        release_git_lock
         log "$run_id" "WORKER" "FAILED to create worktree for ${task_id}"
         set_task_status "$run_dir" "$task_id" "failed"
         echo "Worktree creation failed. Check ${log_file} for details." > "$result_file"
         return 1
     fi
 
-    # Record worktree path
+    release_git_lock
+
+    # Record worktree path (absolute)
     echo "$worktree_path" > "${run_dir}/tasks/${task_id}.worktree"
+
+    # Log worktree details for debugging
+    echo "Worktree created at: $worktree_path" >> "$log_file"
+    echo "Worktree contents before Claude:" >> "$log_file"
+    ls -la "$worktree_path" >> "$log_file" 2>&1
 
     # Update status to running
     set_task_status "$run_dir" "$task_id" "running"
@@ -134,6 +178,21 @@ launch_worker() {
     claude_exit_code=$?
 
     # ── Step 5: Capture results ───────────────────────────────────────────
+    # Log worktree state after Claude (for debugging)
+    echo "" >> "$log_file"
+    echo "=== After Claude execution ===" >> "$log_file"
+    echo "Claude exit code: $claude_exit_code" >> "$log_file"
+    echo "Worktree path: $abs_worktree" >> "$log_file"
+    echo "Worktree contents after Claude:" >> "$log_file"
+    ls -la "$abs_worktree" >> "$log_file" 2>&1
+    echo "" >> "$log_file"
+    echo "Git status in worktree:" >> "$log_file"
+    (cd "$abs_worktree" && git status) >> "$log_file" 2>&1
+    echo "" >> "$log_file"
+    echo "Main project directory contents (check for stray files):" >> "$log_file"
+    ls -la "${ORIGINAL_PWD}" >> "$log_file" 2>&1
+    echo "" >> "$log_file"
+
     if [[ $claude_exit_code -eq 0 ]]; then
         # Check if the worker made any file changes
         local changes_made=""
@@ -142,6 +201,10 @@ launch_worker() {
         # Also check for untracked files
         local untracked=""
         untracked=$(cd "$abs_worktree" && git ls-files --others --exclude-standard 2>/dev/null || echo "")
+
+        # Log what we found
+        echo "Changes detected: '${changes_made}'" >> "$log_file"
+        echo "Untracked files: '${untracked}'" >> "$log_file"
 
         if [[ -n "$changes_made" || -n "$untracked" ]]; then
             # Commit the worker's changes

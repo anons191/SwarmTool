@@ -48,7 +48,9 @@ launch_worker() {
     local base_commit task_branch worktree_path
     base_commit=$(get_run_meta "$run_dir" "BASE_COMMIT")
     task_branch=$(taskspec_get "$spec_file" "TASK_BRANCH")
-    worktree_path="${SWARMTOOL_STATE_DIR}/worktrees/${run_id}/${task_id}"
+    # Use /tmp for worktrees so they're OUTSIDE the project directory
+    # This prevents Claude Code from detecting the main repo as the project root
+    worktree_path="/tmp/swarmtool-worktrees/${run_id}/${task_id}"
 
     local result_file="${run_dir}/tasks/${task_id}.result"
     local log_file="${run_dir}/tasks/${task_id}.log"

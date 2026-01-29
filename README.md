@@ -55,17 +55,10 @@ Workers are **isolated and ignorant**. They receive only the specific task, the 
 ### Global install (recommended)
 
 ```bash
-git clone https://github.com/anons191/SwarmTool.git
-cd SwarmTool
-./install.sh global
+curl -sL https://raw.githubusercontent.com/anons191/SwarmTool/main/install.sh | bash
 ```
 
-This symlinks `swarmtool` to `/usr/local/bin/` so it's available everywhere.
-
-Custom path:
-```bash
-./install.sh global --path ~/bin
-```
+This clones SwarmTool to `~/.swarmtool` and symlinks to `/usr/local/bin/swarmtool`.
 
 ### Project install
 
@@ -73,32 +66,22 @@ Install SwarmTool directly into your project (useful for teams):
 
 ```bash
 cd /path/to/your/project
-/path/to/SwarmTool/install.sh project
+curl -sL https://raw.githubusercontent.com/anons191/SwarmTool/main/install.sh | bash -s -- --local
 ```
 
-This copies SwarmTool to `./bin/swarmtool` with all dependencies bundled. Commit it to share with your team.
+This bundles SwarmTool into `./bin/` with all dependencies. Commit it to share with your team.
 
-Custom path:
+### Uninstall
+
 ```bash
-./install.sh project --path ./tools
+curl -sL https://raw.githubusercontent.com/anons191/SwarmTool/main/install.sh | bash -s -- --uninstall
 ```
 
 ### Manual install
 
 ```bash
-git clone https://github.com/anons191/SwarmTool.git
-ln -s "$(pwd)/SwarmTool/swarmtool" /usr/local/bin/swarmtool
-```
-
-Or add to PATH:
-```bash
-export PATH="$PATH:$(pwd)/SwarmTool"  # Add to ~/.zshrc or ~/.bashrc
-```
-
-### Uninstall
-
-```bash
-./install.sh uninstall
+git clone https://github.com/anons191/SwarmTool.git ~/.swarmtool
+sudo ln -s ~/.swarmtool/swarmtool /usr/local/bin/swarmtool
 ```
 
 ### Verify installation

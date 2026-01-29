@@ -1,8 +1,20 @@
 #!/usr/bin/env bash
-# install.sh -- Install swarmtool globally or into a project
+# install.sh -- Install swarmtool via curl or locally
+#
+# Usage:
+#   curl -sL https://raw.githubusercontent.com/anons191/SwarmTool/main/install.sh | bash
+#   curl -sL https://raw.githubusercontent.com/anons191/SwarmTool/main/install.sh | bash -s -- --local
+#   curl -sL https://raw.githubusercontent.com/anons191/SwarmTool/main/install.sh | bash -s -- --uninstall
+#
 set -euo pipefail
 
-# Colors
+# ── Config ──────────────────────────────────────────────────────────────────
+REPO_URL="https://github.com/anons191/SwarmTool.git"
+GLOBAL_INSTALL_DIR="${HOME}/.swarmtool"
+GLOBAL_BIN_DIR="/usr/local/bin"
+LOCAL_INSTALL_DIR="./bin"
+
+# ── Colors ──────────────────────────────────────────────────────────────────
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -10,261 +22,239 @@ BLUE='\033[0;34m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-SWARMTOOL_BIN="${SCRIPT_DIR}/swarmtool"
+# ── Helpers ─────────────────────────────────────────────────────────────────
+info()    { echo -e "${BLUE}==>${NC} $1"; }
+success() { echo -e "${GREEN}==>${NC} $1"; }
+warn()    { echo -e "${YELLOW}==>${NC} $1"; }
+error()   { echo -e "${RED}==>${NC} $1"; }
 
-usage() {
-    cat <<EOF
-${BOLD}swarmtool installer${NC}
-
-${BOLD}USAGE${NC}
-    ./install.sh [MODE] [OPTIONS]
-
-${BOLD}MODES${NC}
-    global          Install swarmtool globally (symlink to /usr/local/bin)
-    project         Install swarmtool into the current project (copy to ./bin/)
-    uninstall       Remove global installation
-
-${BOLD}OPTIONS${NC}
-    --path <dir>    Custom install path (default: /usr/local/bin for global, ./bin for project)
-    --help          Show this help message
-
-${BOLD}EXAMPLES${NC}
-    ./install.sh global                    # Symlink to /usr/local/bin/swarmtool
-    ./install.sh global --path ~/bin       # Symlink to ~/bin/swarmtool
-    ./install.sh project                   # Copy to ./bin/swarmtool
-    ./install.sh project --path ./tools    # Copy to ./tools/swarmtool
-    ./install.sh uninstall                 # Remove from /usr/local/bin
-
-EOF
-}
-
+# ── Prerequisite Check ──────────────────────────────────────────────────────
 check_prerequisites() {
     local missing=0
 
     if ! command -v git >/dev/null 2>&1; then
-        echo -e "${RED}Missing:${NC} git"
+        error "Missing: git"
         missing=1
     fi
 
     if ! command -v claude >/dev/null 2>&1; then
-        echo -e "${RED}Missing:${NC} claude (Claude Code CLI)"
-        echo "  Install from: https://docs.anthropic.com/en/docs/claude-code"
-        missing=1
+        warn "Missing: claude (Claude Code CLI)"
+        echo "    Install from: https://docs.anthropic.com/en/docs/claude-code"
+        echo "    SwarmTool will be installed, but won't work without it."
     fi
 
     if ! command -v jq >/dev/null 2>&1; then
-        echo -e "${RED}Missing:${NC} jq"
-        echo "  Install with: brew install jq"
+        error "Missing: jq"
+        echo "    Install with: brew install jq (macOS) or apt install jq (Linux)"
         missing=1
     fi
 
     if [[ $missing -eq 1 ]]; then
         echo ""
-        echo -e "${YELLOW}Install the missing prerequisites and try again.${NC}"
-        return 1
+        error "Install missing prerequisites and try again."
+        exit 1
     fi
-
-    echo -e "${GREEN}All prerequisites found.${NC}"
-    return 0
 }
 
+# ── Global Install ──────────────────────────────────────────────────────────
 install_global() {
-    local install_path="${1:-/usr/local/bin}"
-    local target="${install_path}/swarmtool"
-
-    echo -e "${BOLD}Installing swarmtool globally...${NC}"
+    echo ""
+    echo -e "${BOLD}SwarmTool Installer${NC}"
     echo ""
 
-    # Check prerequisites
-    check_prerequisites || exit 1
-    echo ""
+    check_prerequisites
 
-    # Create install directory if needed
-    if [[ ! -d "$install_path" ]]; then
-        echo -e "${YELLOW}Creating directory: ${install_path}${NC}"
-        sudo mkdir -p "$install_path"
-    fi
+    info "Installing swarmtool globally..."
 
-    # Remove existing installation
-    if [[ -e "$target" || -L "$target" ]]; then
-        echo -e "${YELLOW}Removing existing installation...${NC}"
-        sudo rm -f "$target"
+    # Clone or update the repo
+    if [[ -d "$GLOBAL_INSTALL_DIR" ]]; then
+        info "Updating existing installation..."
+        git -C "$GLOBAL_INSTALL_DIR" pull --ff-only origin main || {
+            warn "Could not update. Re-cloning..."
+            rm -rf "$GLOBAL_INSTALL_DIR"
+            git clone --depth 1 "$REPO_URL" "$GLOBAL_INSTALL_DIR"
+        }
+    else
+        info "Cloning SwarmTool..."
+        git clone --depth 1 "$REPO_URL" "$GLOBAL_INSTALL_DIR"
     fi
 
     # Create symlink
-    echo "Symlinking: ${target} -> ${SWARMTOOL_BIN}"
-    sudo ln -s "$SWARMTOOL_BIN" "$target"
+    info "Creating symlink in ${GLOBAL_BIN_DIR}..."
 
-    echo ""
-    echo -e "${GREEN}Successfully installed!${NC}"
-    echo ""
-    echo "Run 'swarmtool --help' to get started."
-    echo ""
-
-    # Verify it works
-    if command -v swarmtool >/dev/null 2>&1; then
-        echo -e "${GREEN}Verified:${NC} swarmtool is available in PATH"
+    if [[ -w "$GLOBAL_BIN_DIR" ]]; then
+        ln -sf "${GLOBAL_INSTALL_DIR}/swarmtool" "${GLOBAL_BIN_DIR}/swarmtool"
     else
-        echo -e "${YELLOW}Note:${NC} You may need to add ${install_path} to your PATH:"
-        echo "  export PATH=\"\$PATH:${install_path}\""
+        sudo ln -sf "${GLOBAL_INSTALL_DIR}/swarmtool" "${GLOBAL_BIN_DIR}/swarmtool"
+    fi
+
+    echo ""
+    success "SwarmTool installed successfully!"
+    echo ""
+    echo "    Location: ${GLOBAL_INSTALL_DIR}"
+    echo "    Binary:   ${GLOBAL_BIN_DIR}/swarmtool"
+    echo ""
+    echo "    Run 'swarmtool --help' to get started."
+    echo ""
+
+    # Verify
+    if command -v swarmtool >/dev/null 2>&1; then
+        success "Verified: swarmtool is in your PATH"
+    else
+        warn "You may need to restart your terminal or add ${GLOBAL_BIN_DIR} to PATH"
     fi
 }
 
-install_project() {
-    local install_path="${1:-./bin}"
-    local target="${install_path}/swarmtool"
-
-    echo -e "${BOLD}Installing swarmtool into project...${NC}"
+# ── Local/Project Install ───────────────────────────────────────────────────
+install_local() {
+    echo ""
+    echo -e "${BOLD}SwarmTool Installer (Project Mode)${NC}"
     echo ""
 
-    # Check prerequisites
-    check_prerequisites || exit 1
-    echo ""
+    check_prerequisites
 
     # Check we're in a git repo
     if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        echo -e "${RED}Error:${NC} Not inside a git repository."
-        echo "Run this command from your project's root directory."
+        error "Not inside a git repository."
+        echo "    Run this from your project's root directory."
         exit 1
     fi
 
-    # Create install directory
-    if [[ ! -d "$install_path" ]]; then
-        echo "Creating directory: ${install_path}"
-        mkdir -p "$install_path"
-    fi
+    info "Installing swarmtool into ${LOCAL_INSTALL_DIR}..."
 
-    # Copy swarmtool and its dependencies
-    echo "Copying swarmtool to ${install_path}/"
+    # Create temp directory for clone
+    local tmp_dir
+    tmp_dir=$(mktemp -d)
+    trap "rm -rf $tmp_dir" EXIT
 
-    # Create the installation structure
-    mkdir -p "${install_path}/swarmtool-lib"
-    mkdir -p "${install_path}/swarmtool-prompts"
+    # Clone repo
+    git clone --depth 1 "$REPO_URL" "$tmp_dir/swarmtool" 2>/dev/null
 
-    # Copy main script
-    cp "$SWARMTOOL_BIN" "$target"
-    chmod +x "$target"
+    # Create local bin directory
+    mkdir -p "$LOCAL_INSTALL_DIR"
 
-    # Copy libraries
-    cp "${SCRIPT_DIR}/lib/"*.sh "${install_path}/swarmtool-lib/"
+    # Copy files
+    cp "$tmp_dir/swarmtool/swarmtool" "${LOCAL_INSTALL_DIR}/swarmtool"
+    cp "$tmp_dir/swarmtool/defaults.conf" "${LOCAL_INSTALL_DIR}/swarmtool-defaults.conf"
+    cp -r "$tmp_dir/swarmtool/lib" "${LOCAL_INSTALL_DIR}/swarmtool-lib"
+    cp -r "$tmp_dir/swarmtool/prompts" "${LOCAL_INSTALL_DIR}/swarmtool-prompts"
 
-    # Copy prompts
-    cp "${SCRIPT_DIR}/prompts/"*.txt "${install_path}/swarmtool-prompts/"
-
-    # Copy config
-    cp "${SCRIPT_DIR}/defaults.conf" "${install_path}/swarmtool-defaults.conf"
-
-    # Patch the script to use local paths
-    sed -i '' "s|SWARMTOOL_DIR=.*|SWARMTOOL_DIR=\"\$(cd \"\$(dirname \"\$0\")\" \&\& pwd)\"|" "$target"
-
-    # Create a wrapper that sets up paths correctly
-    cat > "$target" <<'WRAPPER'
+    # Patch the main script to use local paths
+    cat > "${LOCAL_INSTALL_DIR}/swarmtool" << 'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
+SWARMTOOL_DIR="$(cd "$(dirname "$0")" && pwd)"
+export SWARMTOOL_DIR
 
-# Resolve installation directory
-INSTALL_DIR="$(cd "$(dirname "$0")" && pwd)"
-export SWARMTOOL_DIR="$INSTALL_DIR"
+# Remap paths for bundled install
+_original_swarmtool_dir="$SWARMTOOL_DIR"
+SCRIPT
 
-# Remap library and prompt paths
-_SWARMTOOL_LIB_DIR="${INSTALL_DIR}/swarmtool-lib"
-_SWARMTOOL_PROMPTS_DIR="${INSTALL_DIR}/swarmtool-prompts"
-_SWARMTOOL_DEFAULTS="${INSTALL_DIR}/swarmtool-defaults.conf"
+    # Append original script with modified paths
+    tail -n +6 "$tmp_dir/swarmtool/swarmtool" | \
+        sed 's|"${SWARMTOOL_DIR}/lib/|"${SWARMTOOL_DIR}/swarmtool-lib/|g' | \
+        sed 's|"${SWARMTOOL_DIR}/prompts/|"${SWARMTOOL_DIR}/swarmtool-prompts/|g' | \
+        sed 's|"${SWARMTOOL_DIR}/defaults.conf"|"${SWARMTOOL_DIR}/swarmtool-defaults.conf"|g' \
+        >> "${LOCAL_INSTALL_DIR}/swarmtool"
 
-WRAPPER
-
-    # Append the rest of the original script, modifying source paths
-    tail -n +2 "$SWARMTOOL_BIN" | \
-        sed "s|\${SWARMTOOL_DIR}/lib/|\${_SWARMTOOL_LIB_DIR}/|g" | \
-        sed "s|\${SWARMTOOL_DIR}/prompts/|\${_SWARMTOOL_PROMPTS_DIR}/|g" | \
-        sed "s|\${SWARMTOOL_DIR}/defaults.conf|\${_SWARMTOOL_DEFAULTS}|g" >> "$target"
-
-    chmod +x "$target"
+    chmod +x "${LOCAL_INSTALL_DIR}/swarmtool"
 
     echo ""
-    echo -e "${GREEN}Successfully installed!${NC}"
+    success "SwarmTool installed into project!"
     echo ""
-    echo "Project structure:"
-    echo "  ${install_path}/"
-    echo "  ├── swarmtool              # Main executable"
-    echo "  ├── swarmtool-lib/         # Library modules"
-    echo "  ├── swarmtool-prompts/     # Prompt templates"
-    echo "  └── swarmtool-defaults.conf"
+    echo "    ${LOCAL_INSTALL_DIR}/"
+    echo "    ├── swarmtool"
+    echo "    ├── swarmtool-defaults.conf"
+    echo "    ├── swarmtool-lib/"
+    echo "    └── swarmtool-prompts/"
     echo ""
-    echo "Run it with:"
-    echo "  ${target} \"Your goal here\""
+    echo "    Run with: ${LOCAL_INSTALL_DIR}/swarmtool \"Your goal\""
     echo ""
-    echo "Or add to your package.json scripts:"
-    echo "  \"swarm\": \"./bin/swarmtool\""
+    echo "    Or add to package.json:"
+    echo "    \"scripts\": { \"swarm\": \"./bin/swarmtool\" }"
     echo ""
-
-    # Suggest adding to .gitignore or committing
-    echo -e "${YELLOW}Tip:${NC} Commit the bin/ directory to share swarmtool with your team,"
-    echo "     or add it to .gitignore if you prefer per-developer installs."
+    warn "Tip: Commit ${LOCAL_INSTALL_DIR}/ to share with your team"
 }
 
-uninstall_global() {
-    local install_path="${1:-/usr/local/bin}"
-    local target="${install_path}/swarmtool"
-
-    echo -e "${BOLD}Uninstalling swarmtool...${NC}"
+# ── Uninstall ───────────────────────────────────────────────────────────────
+uninstall() {
+    echo ""
+    echo -e "${BOLD}SwarmTool Uninstaller${NC}"
     echo ""
 
-    if [[ -e "$target" || -L "$target" ]]; then
-        sudo rm -f "$target"
-        echo -e "${GREEN}Removed:${NC} ${target}"
-    else
-        echo -e "${YELLOW}Not found:${NC} ${target}"
+    local removed=0
+
+    # Remove symlink
+    if [[ -L "${GLOBAL_BIN_DIR}/swarmtool" ]]; then
+        info "Removing ${GLOBAL_BIN_DIR}/swarmtool..."
+        if [[ -w "$GLOBAL_BIN_DIR" ]]; then
+            rm -f "${GLOBAL_BIN_DIR}/swarmtool"
+        else
+            sudo rm -f "${GLOBAL_BIN_DIR}/swarmtool"
+        fi
+        removed=1
     fi
 
-    echo ""
-    echo "Uninstall complete."
+    # Remove installation directory
+    if [[ -d "$GLOBAL_INSTALL_DIR" ]]; then
+        info "Removing ${GLOBAL_INSTALL_DIR}..."
+        rm -rf "$GLOBAL_INSTALL_DIR"
+        removed=1
+    fi
+
+    if [[ $removed -eq 1 ]]; then
+        echo ""
+        success "SwarmTool uninstalled."
+    else
+        warn "SwarmTool was not installed globally."
+    fi
+}
+
+# ── Usage ───────────────────────────────────────────────────────────────────
+usage() {
+    cat << EOF
+${BOLD}SwarmTool Installer${NC}
+
+${BOLD}USAGE${NC}
+    Global install (recommended):
+        curl -sL https://raw.githubusercontent.com/anons191/SwarmTool/main/install.sh | bash
+
+    Project install:
+        curl -sL https://raw.githubusercontent.com/anons191/SwarmTool/main/install.sh | bash -s -- --local
+
+    Uninstall:
+        curl -sL https://raw.githubusercontent.com/anons191/SwarmTool/main/install.sh | bash -s -- --uninstall
+
+${BOLD}OPTIONS${NC}
+    --local       Install into current project (./bin/swarmtool)
+    --uninstall   Remove global installation
+    --help        Show this help message
+
+EOF
 }
 
 # ── Main ────────────────────────────────────────────────────────────────────
-
-MODE="${1:-}"
-shift || true
-
-INSTALL_PATH=""
-
-# Parse options
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --path)
-            INSTALL_PATH="$2"
-            shift 2
+main() {
+    case "${1:-}" in
+        --local|-l)
+            install_local
+            ;;
+        --uninstall|-u)
+            uninstall
             ;;
         --help|-h)
             usage
-            exit 0
+            ;;
+        "")
+            install_global
             ;;
         *)
-            echo -e "${RED}Unknown option:${NC} $1"
+            error "Unknown option: $1"
+            echo ""
             usage
             exit 1
             ;;
     esac
-done
+}
 
-case "$MODE" in
-    global)
-        install_global "$INSTALL_PATH"
-        ;;
-    project)
-        install_project "$INSTALL_PATH"
-        ;;
-    uninstall)
-        uninstall_global "$INSTALL_PATH"
-        ;;
-    --help|-h|"")
-        usage
-        ;;
-    *)
-        echo -e "${RED}Unknown mode:${NC} $MODE"
-        echo ""
-        usage
-        exit 1
-        ;;
-esac
+main "$@"

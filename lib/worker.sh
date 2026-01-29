@@ -121,6 +121,38 @@ launch_worker() {
 
     release_git_lock
 
+    # ── Step 1b: Merge dependency branches into worktree ──
+    # If this task depends on others, we need their changes in our worktree
+    local depends_on
+    depends_on=$(taskspec_get "$spec_file" "TASK_DEPENDS_ON")
+
+    if [[ -n "$depends_on" ]]; then
+        echo "Task has dependencies: $depends_on" >> "$log_file"
+        local IFS=','
+        for dep in $depends_on; do
+            dep=$(echo "$dep" | tr -d ' ')
+            local dep_branch="swarmtool/${run_id}/${dep}"
+
+            # Check if dependency branch exists and has commits beyond base
+            if git rev-parse --verify "$dep_branch" >/dev/null 2>&1; then
+                echo "Merging dependency branch: $dep_branch" >> "$log_file"
+                (
+                    cd "$worktree_path" || exit 1
+                    # Merge the dependency branch (allow unrelated histories for safety)
+                    if git merge "$dep_branch" --no-edit -m "Merge dependency $dep" 2>>"${ORIGINAL_PWD}/${log_file}"; then
+                        echo "Successfully merged $dep_branch" >> "${ORIGINAL_PWD}/${log_file}"
+                    else
+                        echo "Warning: Could not merge $dep_branch (may have conflicts)" >> "${ORIGINAL_PWD}/${log_file}"
+                        git merge --abort 2>/dev/null || true
+                    fi
+                )
+            else
+                echo "Warning: Dependency branch $dep_branch not found" >> "$log_file"
+            fi
+        done
+        unset IFS
+    fi
+
     # Record worktree path (absolute)
     echo "$worktree_path" > "${run_dir}/tasks/${task_id}.worktree"
 

@@ -253,9 +253,20 @@ run_execution_phase() {
 
         # ── Get ready tasks ───────────────────────────────────────────────
         local ready_tasks=()
-        while IFS= read -r tid; do
-            [[ -n "$tid" ]] && ready_tasks+=("$tid")
-        done < <(list_ready_tasks "$run_dir")
+        local ready_output
+        log "$run_id" "EXEC" "DEBUG: Calling list_ready_tasks..."
+        ready_output=$(list_ready_tasks "$run_dir")
+        log "$run_id" "EXEC" "DEBUG: ready_output='${ready_output}'"
+        if [[ -n "$ready_output" ]]; then
+            log "$run_id" "EXEC" "DEBUG: ready_output is not empty, parsing..."
+            while IFS= read -r tid; do
+                log "$run_id" "EXEC" "DEBUG: read tid='${tid}'"
+                [[ -n "$tid" ]] && ready_tasks+=("$tid")
+            done <<< "$ready_output"
+        else
+            log "$run_id" "EXEC" "DEBUG: ready_output is empty!"
+        fi
+        log "$run_id" "EXEC" "DEBUG: ready_tasks array has ${#ready_tasks[@]} elements"
 
         # ── Launch new workers ────────────────────────────────────────────
         local active_count="${#active_pids[@]}"
@@ -289,6 +300,15 @@ run_execution_phase() {
 
         # No ready tasks and nothing running = possible deadlock (unresolvable dependencies)
         if [[ ${#ready_tasks[@]} -eq 0 && ${#active_pids[@]} -eq 0 && $pending_count -gt 0 ]]; then
+            # Debug: show why tasks aren't ready
+            log "$run_id" "EXEC" "DEBUG: No ready tasks. Checking task states..."
+            for spec_file in "${run_dir}/tasks/"*.spec; do
+                [[ -f "$spec_file" ]] || continue
+                local tid=$(basename "$spec_file" .spec)
+                local status=$(cat "${run_dir}/tasks/${tid}.status" 2>/dev/null || echo "no-status-file")
+                local deps=$(taskspec_get "$spec_file" "TASK_DEPENDS_ON")
+                log "$run_id" "EXEC" "DEBUG: Task ${tid}: status=${status}, depends_on='${deps}'"
+            done
             log_error "Deadlock detected: ${pending_count} tasks pending but none are ready (dependency cycle?)"
             break
         fi

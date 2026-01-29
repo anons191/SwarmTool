@@ -22,17 +22,17 @@ render_template() {
     local content
     content=$(cat "$template_file")
 
-    # Replace each VAR=value pair
+    # Replace each VAR=value pair using bash substitution
     while [[ $# -gt 0 ]]; do
         local pair="$1"
         local key="${pair%%=*}"
         local value="${pair#*=}"
-        # Use awk for safe substitution (handles special chars in value)
-        content=$(echo "$content" | awk -v k="{{${key}}}" -v v="$value" '{gsub(k, v); print}')
+        # Use bash's built-in substitution (handles special chars safely)
+        content="${content//\{\{${key}\}\}/${value}}"
         shift
     done
 
-    echo "$content"
+    printf '%s' "$content"
 }
 
 # ── Worker Prompt Construction ──────────────────────────────────────────────

@@ -17,27 +17,18 @@ determine_merge_order() {
     local abs_run_dir
     abs_run_dir=$(cd "$run_dir" 2>/dev/null && pwd) || abs_run_dir="$run_dir"
 
-    echo "DEBUG determine_merge_order: run_dir=$run_dir" >&2
-    echo "DEBUG determine_merge_order: abs_run_dir=$abs_run_dir" >&2
-    echo "DEBUG determine_merge_order: pwd=$(pwd)" >&2
-    echo "DEBUG determine_merge_order: looking for ${abs_run_dir}/tasks/*.judge" >&2
-
     # Collect tasks that passed judging
     local passed_tasks=()
     for judge_file in "${abs_run_dir}/tasks/"*.judge; do
-        echo "DEBUG determine_merge_order: checking $judge_file" >&2
-        [[ -f "$judge_file" ]] || { echo "DEBUG: not a file" >&2; continue; }
+        [[ -f "$judge_file" ]] || continue
         local verdict
         verdict=$(grep "^VERDICT=" "$judge_file" | cut -d'=' -f2-)
-        echo "DEBUG determine_merge_order: verdict=$verdict" >&2
         if [[ "$verdict" == "pass" ]]; then
             local task_id
             task_id=$(basename "$judge_file" .judge)
             passed_tasks+=("$task_id")
-            echo "DEBUG determine_merge_order: added $task_id" >&2
         fi
     done
-    echo "DEBUG determine_merge_order: passed_tasks count=${#passed_tasks[@]}" >&2
 
     if [[ ${#passed_tasks[@]} -eq 0 ]]; then
         return 0
@@ -54,22 +45,16 @@ determine_merge_order() {
         remaining+=("${passed_tasks[$cp_idx]}")
     done
 
-    echo "DEBUG: Starting topological sort with ${#remaining[@]} tasks" >&2
-
     while [[ ${#remaining[@]} -gt 0 ]]; do
         local progress=false
         local next_remaining=()
 
-        echo "DEBUG: Loop iteration, remaining=${remaining[*]}" >&2
-
         local r_idx
         for ((r_idx=0; r_idx<${#remaining[@]}; r_idx++)); do
             local task_id="${remaining[$r_idx]}"
-            echo "DEBUG: Checking task_id=$task_id" >&2
             local spec_file="${abs_run_dir}/tasks/${task_id}.spec"
             local deps
             deps=$(taskspec_get "$spec_file" "TASK_DEPENDS_ON")
-            echo "DEBUG: task_id=$task_id deps='$deps'" >&2
 
             local deps_met=true
             if [[ -n "$deps" ]]; then
@@ -86,12 +71,10 @@ determine_merge_order() {
                 unset IFS
             fi
 
-            echo "DEBUG: task_id=$task_id deps_met=$deps_met" >&2
             if [[ "$deps_met" == "true" ]]; then
                 ordered+=("$task_id")
                 merged_ids+=("$task_id")
                 progress=true
-                echo "DEBUG: Added $task_id to ordered" >&2
             else
                 next_remaining+=("$task_id")
             fi

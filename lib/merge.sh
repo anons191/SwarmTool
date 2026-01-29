@@ -45,17 +45,31 @@ determine_merge_order() {
 
     # Topological sort: tasks with no dependencies first, then by priority
     local ordered=()
-    local remaining=("${passed_tasks[@]}")
     local merged_ids=()
+
+    # Copy passed_tasks to remaining (Bash 3.2 safe)
+    local remaining=()
+    local cp_idx
+    for ((cp_idx=0; cp_idx<${#passed_tasks[@]}; cp_idx++)); do
+        remaining+=("${passed_tasks[$cp_idx]}")
+    done
+
+    echo "DEBUG: Starting topological sort with ${#remaining[@]} tasks" >&2
 
     while [[ ${#remaining[@]} -gt 0 ]]; do
         local progress=false
         local next_remaining=()
 
-        for task_id in "${remaining[@]}"; do
+        echo "DEBUG: Loop iteration, remaining=${remaining[*]}" >&2
+
+        local r_idx
+        for ((r_idx=0; r_idx<${#remaining[@]}; r_idx++)); do
+            local task_id="${remaining[$r_idx]}"
+            echo "DEBUG: Checking task_id=$task_id" >&2
             local spec_file="${abs_run_dir}/tasks/${task_id}.spec"
             local deps
             deps=$(taskspec_get "$spec_file" "TASK_DEPENDS_ON")
+            echo "DEBUG: task_id=$task_id deps='$deps'" >&2
 
             local deps_met=true
             if [[ -n "$deps" ]]; then
@@ -63,24 +77,31 @@ determine_merge_order() {
                 for dep in $deps; do
                     dep=$(echo "$dep" | tr -d ' ')
                     local found=false
-                    for mid in "${merged_ids[@]:-}"; do
-                        [[ "$mid" == "$dep" ]] && found=true && break
+                    local m_idx
+                    for ((m_idx=0; m_idx<${#merged_ids[@]}; m_idx++)); do
+                        [[ "${merged_ids[$m_idx]}" == "$dep" ]] && found=true && break
                     done
                     [[ "$found" != "true" ]] && deps_met=false && break
                 done
                 unset IFS
             fi
 
+            echo "DEBUG: task_id=$task_id deps_met=$deps_met" >&2
             if [[ "$deps_met" == "true" ]]; then
                 ordered+=("$task_id")
                 merged_ids+=("$task_id")
                 progress=true
+                echo "DEBUG: Added $task_id to ordered" >&2
             else
                 next_remaining+=("$task_id")
             fi
         done
 
-        remaining=("${next_remaining[@]:-}")
+        # Copy next_remaining to remaining (Bash 3.2 safe)
+        remaining=()
+        for ((cp_idx=0; cp_idx<${#next_remaining[@]}; cp_idx++)); do
+            remaining+=("${next_remaining[$cp_idx]}")
+        done
 
         if [[ "$progress" != "true" && ${#remaining[@]} -gt 0 ]]; then
             # Circular dependency or unresolvable -- add remaining

@@ -56,6 +56,7 @@ ${BOLD}OPTIONS${NC}
     --judge-model <m>     Model for judge (default: sonnet)
     --budget <usd>        Total budget cap in USD (default: 20.00)
     --dry-run             Show plan without executing
+    --auto-approve, -y    Auto-approve all steps after plan approval
     --verbose             Show detailed output including resource detection
     --config              Show current configuration and exit
     --help                Show this help message
@@ -100,6 +101,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --dry-run)
             DRY_RUN=true
+            shift
+            ;;
+        --auto-approve|-y)
+            AUTO_APPROVE=true
             shift
             ;;
         --verbose|-v)

@@ -277,8 +277,14 @@ run_merge_phase() {
 
     # ── Stage 4: Merge into base branch ─────────────────────────────────
     echo ""
-    printf "Merge ${BOLD}%d${NC} changes into ${BOLD}%s${NC}? [y/N] " "$success_count" "$base_branch"
-    read -r confirm
+    local confirm="n"
+    if [[ "${AUTO_APPROVE:-false}" == "true" ]]; then
+        printf "Merging ${BOLD}%d${NC} changes into ${BOLD}%s${NC}... (auto-approved)\n" "$success_count" "$base_branch"
+        confirm="y"
+    else
+        printf "Merge ${BOLD}%d${NC} changes into ${BOLD}%s${NC}? [y/N] " "$success_count" "$base_branch"
+        read -r confirm
+    fi
 
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
         git checkout "$base_branch" >>"$merge_log" 2>&1

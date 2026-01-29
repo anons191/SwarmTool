@@ -43,6 +43,17 @@ run_review_phase() {
                 printf "Execute ${BOLD}%s${NC} tasks? [y/N] " "$task_count"
                 read -r confirm
                 if [[ "$confirm" =~ ^[Yy]$ ]]; then
+                    # Ask about auto-approve if not already set via CLI flag
+                    if [[ "${AUTO_APPROVE:-false}" != "true" ]]; then
+                        echo ""
+                        printf "Auto-approve all subsequent steps (judging, merge)? [y/N] "
+                        read -r auto_confirm
+                        if [[ "$auto_confirm" =~ ^[Yy]$ ]]; then
+                            AUTO_APPROVE=true
+                            export AUTO_APPROVE
+                            printf "${DIM}Running hands-off mode. You'll see progress but won't be prompted.${NC}\n"
+                        fi
+                    fi
                     return 0
                 fi
                 ;;

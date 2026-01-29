@@ -41,7 +41,9 @@ handle_shutdown() {
     local wait_count=0
     while [[ $wait_count -lt 30 ]]; do
         local any_alive=false
-        for entry in "${WORKER_PIDS[@]}"; do
+        local i
+        for ((i=0; i<${#WORKER_PIDS[@]}; i++)); do
+            local entry="${WORKER_PIDS[$i]}"
             local pid="${entry%%:*}"
             if kill -0 "$pid" 2>/dev/null; then
                 any_alive=true
@@ -76,7 +78,9 @@ handle_shutdown() {
 # Kill all tracked worker processes with the given signal
 kill_all_workers() {
     local sig="${1:-15}"
-    for entry in "${WORKER_PIDS[@]}"; do
+    local i
+    for ((i=0; i<${#WORKER_PIDS[@]}; i++)); do
+        local entry="${WORKER_PIDS[$i]}"
         local pid="${entry%%:*}"
         kill "-${sig}" "$pid" 2>/dev/null
     done

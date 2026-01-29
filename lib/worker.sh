@@ -270,12 +270,21 @@ run_execution_phase() {
 
         # ── Launch new workers ────────────────────────────────────────────
         local active_count="${#active_pids[@]}"
-        for tid in "${ready_tasks[@]:-}"; do
-            [[ -z "${tid:-}" ]] && continue
-            [[ $active_count -ge $max_workers ]] && break
+        log "$run_id" "EXEC" "DEBUG: Starting worker launch loop. active_count=$active_count max_workers=$max_workers"
+        log "$run_id" "EXEC" "DEBUG: ready_tasks has ${#ready_tasks[@]} elements: ${ready_tasks[*]}"
+
+        # Use index-based iteration for Bash 3.2 compatibility
+        local loop_idx
+        for ((loop_idx=0; loop_idx<${#ready_tasks[@]}; loop_idx++)); do
+            local tid="${ready_tasks[$loop_idx]}"
+            log "$run_id" "EXEC" "DEBUG: Loop iteration $loop_idx, tid='$tid'"
+
+            [[ -z "$tid" ]] && { log "$run_id" "EXEC" "DEBUG: tid is empty, skipping"; continue; }
+            [[ $active_count -ge $max_workers ]] && { log "$run_id" "EXEC" "DEBUG: active_count($active_count) >= max_workers($max_workers), breaking"; break; }
 
             local title
             title=$(taskspec_get "${run_dir}/tasks/${tid}.spec" "TASK_TITLE")
+            log "$run_id" "EXEC" "DEBUG: Starting worker for tid='$tid' title='$title'"
             printf "  ${BLUE}[start]${NC} %s\n" "$title"
 
             # Launch worker in background subshell
@@ -287,7 +296,9 @@ run_execution_phase() {
 
             # Track for signal handler
             WORKER_PIDS+=("$pid:$tid")
+            log "$run_id" "EXEC" "DEBUG: Launched worker pid=$pid, new active_count=$active_count"
         done
+        log "$run_id" "EXEC" "DEBUG: Worker launch loop finished"
 
         # ── Check if we're done ───────────────────────────────────────────
         local pending_count running_count

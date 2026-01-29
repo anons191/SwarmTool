@@ -17,18 +17,27 @@ determine_merge_order() {
     local abs_run_dir
     abs_run_dir=$(cd "$run_dir" 2>/dev/null && pwd) || abs_run_dir="$run_dir"
 
+    echo "DEBUG determine_merge_order: run_dir=$run_dir" >&2
+    echo "DEBUG determine_merge_order: abs_run_dir=$abs_run_dir" >&2
+    echo "DEBUG determine_merge_order: pwd=$(pwd)" >&2
+    echo "DEBUG determine_merge_order: looking for ${abs_run_dir}/tasks/*.judge" >&2
+
     # Collect tasks that passed judging
     local passed_tasks=()
     for judge_file in "${abs_run_dir}/tasks/"*.judge; do
-        [[ -f "$judge_file" ]] || continue
+        echo "DEBUG determine_merge_order: checking $judge_file" >&2
+        [[ -f "$judge_file" ]] || { echo "DEBUG: not a file" >&2; continue; }
         local verdict
         verdict=$(grep "^VERDICT=" "$judge_file" | cut -d'=' -f2-)
+        echo "DEBUG determine_merge_order: verdict=$verdict" >&2
         if [[ "$verdict" == "pass" ]]; then
             local task_id
             task_id=$(basename "$judge_file" .judge)
             passed_tasks+=("$task_id")
+            echo "DEBUG determine_merge_order: added $task_id" >&2
         fi
     done
+    echo "DEBUG determine_merge_order: passed_tasks count=${#passed_tasks[@]}" >&2
 
     if [[ ${#passed_tasks[@]} -eq 0 ]]; then
         return 0

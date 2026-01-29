@@ -180,19 +180,10 @@ list_task_ids() {
 # Usage: list_tasks_by_status <run_dir> <status>
 list_tasks_by_status() {
     local run_dir="$1" status="$2"
-    echo "DEBUG list_tasks_by_status: run_dir='${run_dir}' status='${status}'" >&2
-    echo "DEBUG list_tasks_by_status: looking for ${run_dir}/tasks/*.status" >&2
     for status_file in "${run_dir}/tasks/"*.status; do
-        echo "DEBUG list_tasks_by_status: checking status_file='${status_file}'" >&2
-        [[ -f "$status_file" ]] || { echo "DEBUG list_tasks_by_status: not a file, skipping" >&2; continue; }
-        local file_status
-        file_status=$(cat "$status_file")
-        echo "DEBUG list_tasks_by_status: file_status='${file_status}'" >&2
-        if [[ "$file_status" == "$status" ]]; then
-            local tid
-            tid=$(basename "$status_file" .status)
-            echo "DEBUG list_tasks_by_status: found matching task: ${tid}" >&2
-            echo "$tid"
+        [[ -f "$status_file" ]] || continue
+        if [[ "$(cat "$status_file")" == "$status" ]]; then
+            basename "$status_file" .status
         fi
     done
 }
@@ -202,23 +193,12 @@ list_tasks_by_status() {
 list_ready_tasks() {
     local run_dir="$1"
 
-    # Debug: list all pending tasks first
-    local pending_list
-    pending_list=$(list_tasks_by_status "$run_dir" "pending")
-
-    # Debug to stderr so it doesn't mix with return value
-    echo "DEBUG list_ready_tasks: pending_list='${pending_list}'" >&2
-
-    for task_id in $pending_list; do
-        echo "DEBUG list_ready_tasks: checking task_id='${task_id}'" >&2
+    for task_id in $(list_tasks_by_status "$run_dir" "pending"); do
         local spec_file="${run_dir}/tasks/${task_id}.spec"
         local depends_on
         depends_on=$(taskspec_get "$spec_file" "TASK_DEPENDS_ON")
 
-        echo "DEBUG list_ready_tasks: task_id='${task_id}' depends_on='${depends_on}'" >&2
-
         if [[ -z "$depends_on" ]]; then
-            echo "DEBUG list_ready_tasks: task_id='${task_id}' is ready (no deps)" >&2
             echo "$task_id"
             continue
         fi

@@ -251,37 +251,26 @@ run_execution_phase() {
         # ── Get ready tasks ───────────────────────────────────────────────
         local ready_tasks=()
         local ready_output
-        log "$run_id" "EXEC" "DEBUG: Calling list_ready_tasks..."
         ready_output=$(list_ready_tasks "$run_dir")
-        log "$run_id" "EXEC" "DEBUG: ready_output='${ready_output}'"
         if [[ -n "$ready_output" ]]; then
-            log "$run_id" "EXEC" "DEBUG: ready_output is not empty, parsing..."
             while IFS= read -r tid; do
-                log "$run_id" "EXEC" "DEBUG: read tid='${tid}'"
                 [[ -n "$tid" ]] && ready_tasks+=("$tid")
             done <<< "$ready_output"
-        else
-            log "$run_id" "EXEC" "DEBUG: ready_output is empty!"
         fi
-        log "$run_id" "EXEC" "DEBUG: ready_tasks array has ${#ready_tasks[@]} elements"
 
         # ── Launch new workers ────────────────────────────────────────────
         local active_count="${#active_pids[@]}"
-        log "$run_id" "EXEC" "DEBUG: Starting worker launch loop. active_count=$active_count max_workers=$max_workers"
-        log "$run_id" "EXEC" "DEBUG: ready_tasks has ${#ready_tasks[@]} elements: ${ready_tasks[*]}"
 
         # Use index-based iteration for Bash 3.2 compatibility
         local loop_idx
         for ((loop_idx=0; loop_idx<${#ready_tasks[@]}; loop_idx++)); do
             local tid="${ready_tasks[$loop_idx]}"
-            log "$run_id" "EXEC" "DEBUG: Loop iteration $loop_idx, tid='$tid'"
 
-            [[ -z "$tid" ]] && { log "$run_id" "EXEC" "DEBUG: tid is empty, skipping"; continue; }
-            [[ $active_count -ge $max_workers ]] && { log "$run_id" "EXEC" "DEBUG: active_count($active_count) >= max_workers($max_workers), breaking"; break; }
+            [[ -z "$tid" ]] && continue
+            [[ $active_count -ge $max_workers ]] && break
 
             local title
             title=$(taskspec_get "${run_dir}/tasks/${tid}.spec" "TASK_TITLE")
-            log "$run_id" "EXEC" "DEBUG: Starting worker for tid='$tid' title='$title'"
             printf "  ${BLUE}[start]${NC} %s\n" "$title"
 
             # Launch worker in background subshell
@@ -293,9 +282,7 @@ run_execution_phase() {
 
             # Track for signal handler
             WORKER_PIDS+=("$pid:$tid")
-            log "$run_id" "EXEC" "DEBUG: Launched worker pid=$pid, new active_count=$active_count"
         done
-        log "$run_id" "EXEC" "DEBUG: Worker launch loop finished"
 
         # ── Check if we're done ───────────────────────────────────────────
         local pending_count running_count
@@ -308,15 +295,6 @@ run_execution_phase() {
 
         # No ready tasks and nothing running = possible deadlock (unresolvable dependencies)
         if [[ ${#ready_tasks[@]} -eq 0 && ${#active_pids[@]} -eq 0 && $pending_count -gt 0 ]]; then
-            # Debug: show why tasks aren't ready
-            log "$run_id" "EXEC" "DEBUG: No ready tasks. Checking task states..."
-            for spec_file in "${run_dir}/tasks/"*.spec; do
-                [[ -f "$spec_file" ]] || continue
-                local tid=$(basename "$spec_file" .spec)
-                local status=$(cat "${run_dir}/tasks/${tid}.status" 2>/dev/null || echo "no-status-file")
-                local deps=$(taskspec_get "$spec_file" "TASK_DEPENDS_ON")
-                log "$run_id" "EXEC" "DEBUG: Task ${tid}: status=${status}, depends_on='${deps}'"
-            done
             log_error "Deadlock detected: ${pending_count} tasks pending but none are ready (dependency cycle?)"
             break
         fi

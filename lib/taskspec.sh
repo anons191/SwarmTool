@@ -186,6 +186,7 @@ list_tasks_by_status() {
             basename "$status_file" .status
         fi
     done
+    return 0
 }
 
 # List tasks that are ready to execute (pending + all dependencies met)
@@ -217,8 +218,9 @@ list_ready_tasks() {
         done
         unset IFS
 
-        [[ "$deps_met" == "true" ]] && echo "$task_id"
+        [[ "$deps_met" == "true" ]] && echo "$task_id" || true
     done
+    return 0
 }
 
 # Count tasks by status

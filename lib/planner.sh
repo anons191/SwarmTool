@@ -95,22 +95,28 @@ run_planning_phase() {
     # The result might be a string containing JSON -- try to parse it
     # If the result is a string with JSON embedded, extract it
     if ! echo "$plan_json" | jq '.tasks' >/dev/null 2>&1; then
-        # Try to extract JSON from markdown code blocks
+        # Try to extract JSON from markdown code blocks (macOS compatible)
         local extracted
-        extracted=$(echo "$plan_json" | sed -n '/^```json/,/^```/{/^```/d;p}' | head -1000)
+        extracted=$(echo "$plan_json" | awk '/^```json$/,/^```$/{if(!/^```/)print}' | head -1000)
         if [[ -n "$extracted" ]] && echo "$extracted" | jq '.tasks' >/dev/null 2>&1; then
             plan_json="$extracted"
         else
-            # Try to find JSON object in the raw output
-            extracted=$(echo "$raw_output" | grep -o '{.*}' | jq '.tasks' >/dev/null 2>&1 && echo "$raw_output" | grep -o '{.*}')
+            # Try to extract any JSON object that has a "tasks" array
+            extracted=$(echo "$raw_output" | jq -r 'if type == "object" and has("tasks") then . else empty end' 2>/dev/null)
             if [[ -n "$extracted" ]]; then
                 plan_json="$extracted"
             else
-                log "$run_id" "PLANNER" "Failed to parse planner output as JSON"
-                log_error "Planner output was not valid JSON. Raw output saved to ${run_dir}/planner_raw_output.txt"
-                echo "$raw_output" > "${run_dir}/planner_raw_output.txt"
-                set_run_state "$run_dir" "failed"
-                return 1
+                # Last resort: look for JSON in the text
+                extracted=$(echo "$raw_output" | grep -Eo '\{[^{}]*"tasks"[^{}]*\}' | head -1)
+                if [[ -n "$extracted" ]] && echo "$extracted" | jq '.tasks' >/dev/null 2>&1; then
+                    plan_json="$extracted"
+                else
+                    log "$run_id" "PLANNER" "Failed to parse planner output as JSON"
+                    log_error "Planner output was not valid JSON. Raw output saved to ${run_dir}/planner_raw_output.txt"
+                    echo "$raw_output" > "${run_dir}/planner_raw_output.txt"
+                    set_run_state "$run_dir" "failed"
+                    return 1
+                fi
             fi
         fi
     fi

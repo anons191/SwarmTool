@@ -230,26 +230,23 @@ run_execution_phase() {
 
                 # Update WORKER_PIDS for signal handler
                 WORKER_PIDS=()
-                for p in "${new_pids[@]:-}"; do
+                for p in "${new_pids[@]}"; do
                     [[ -n "$p" ]] && WORKER_PIDS+=("$p:unused")
                 done
             fi
             i=$((i + 1))
         done
-        active_pids=("${new_pids[@]:-}")
-        active_tasks=("${new_tasks[@]:-}")
 
-        # Remove empty elements
-        local clean_pids=()
-        local clean_tasks=()
-        for j in "${!active_pids[@]}"; do
-            if [[ -n "${active_pids[$j]:-}" ]]; then
-                clean_pids+=("${active_pids[$j]}")
-                clean_tasks+=("${active_tasks[$j]}")
-            fi
+        # Copy arrays (avoid :- which creates empty element in Bash 3.2)
+        active_pids=()
+        active_tasks=()
+        local copy_idx
+        for ((copy_idx=0; copy_idx<${#new_pids[@]}; copy_idx++)); do
+            [[ -n "${new_pids[$copy_idx]}" ]] && active_pids+=("${new_pids[$copy_idx]}")
         done
-        active_pids=("${clean_pids[@]:-}")
-        active_tasks=("${clean_tasks[@]:-}")
+        for ((copy_idx=0; copy_idx<${#new_tasks[@]}; copy_idx++)); do
+            [[ -n "${new_tasks[$copy_idx]}" ]] && active_tasks+=("${new_tasks[$copy_idx]}")
+        done
 
         # ── Get ready tasks ───────────────────────────────────────────────
         local ready_tasks=()

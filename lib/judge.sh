@@ -126,6 +126,12 @@ judge_task() {
     local judge_file="${run_dir}/tasks/${task_id}.judge"
     local judge_log="${run_dir}/tasks/${task_id}.judge_log"
 
+    # Convert to absolute paths (needed when we cd to worktree)
+    local abs_run_dir
+    abs_run_dir=$(cd "$run_dir" && pwd)
+    judge_file="${abs_run_dir}/tasks/${task_id}.judge"
+    judge_log="${abs_run_dir}/tasks/${task_id}.judge_log"
+
     local title
     title=$(taskspec_get "$spec_file" "TASK_TITLE")
 

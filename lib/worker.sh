@@ -230,8 +230,9 @@ run_execution_phase() {
 
                 # Update WORKER_PIDS for signal handler
                 WORKER_PIDS=()
-                for p in "${new_pids[@]}"; do
-                    [[ -n "$p" ]] && WORKER_PIDS+=("$p:unused")
+                local wp_idx
+                for ((wp_idx=0; wp_idx<${#new_pids[@]}; wp_idx++)); do
+                    [[ -n "${new_pids[$wp_idx]}" ]] && WORKER_PIDS+=("${new_pids[$wp_idx]}:unused")
                 done
             fi
             i=$((i + 1))

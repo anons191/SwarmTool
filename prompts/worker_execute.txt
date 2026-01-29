@@ -18,6 +18,7 @@
 ## Instructions
 1. Read the input files listed above to understand the current code.
 2. Implement the changes described in the description.
-3. Verify your changes meet all success criteria.
-4. Do not make changes outside the boundaries specified above.
-5. When done, ensure all files are saved. Do not run git commands.
+3. IMPORTANT: Create all files in the current working directory (use "./" prefix or relative paths like "./package.json", "./src/index.js"). Do NOT use /tmp or other absolute paths.
+4. Verify your changes meet all success criteria.
+5. Do not make changes outside the boundaries specified above.
+6. When done, ensure all files are saved. Do not run git commands.

@@ -18,13 +18,15 @@ source "${SWARMTOOL_DIR}/lib/scale.sh"
 source "${SWARMTOOL_DIR}/lib/cleanup.sh"
 
 # Source optional modules (loaded as they are built)
-[[ -f "${SWARMTOOL_DIR}/lib/prompt.sh" ]]      && source "${SWARMTOOL_DIR}/lib/prompt.sh"
-[[ -f "${SWARMTOOL_DIR}/lib/planner.sh" ]]     && source "${SWARMTOOL_DIR}/lib/planner.sh"
-[[ -f "${SWARMTOOL_DIR}/lib/worker.sh" ]]      && source "${SWARMTOOL_DIR}/lib/worker.sh"
-[[ -f "${SWARMTOOL_DIR}/lib/judge.sh" ]]       && source "${SWARMTOOL_DIR}/lib/judge.sh"
-[[ -f "${SWARMTOOL_DIR}/lib/merge.sh" ]]       && source "${SWARMTOOL_DIR}/lib/merge.sh"
+[[ -f "${SWARMTOOL_DIR}/lib/prompt.sh" ]]       && source "${SWARMTOOL_DIR}/lib/prompt.sh"
+[[ -f "${SWARMTOOL_DIR}/lib/planner.sh" ]]      && source "${SWARMTOOL_DIR}/lib/planner.sh"
+[[ -f "${SWARMTOOL_DIR}/lib/worker.sh" ]]       && source "${SWARMTOOL_DIR}/lib/worker.sh"
+[[ -f "${SWARMTOOL_DIR}/lib/judge.sh" ]]        && source "${SWARMTOOL_DIR}/lib/judge.sh"
+[[ -f "${SWARMTOOL_DIR}/lib/merge.sh" ]]        && source "${SWARMTOOL_DIR}/lib/merge.sh"
 [[ -f "${SWARMTOOL_DIR}/lib/interactive.sh" ]]  && source "${SWARMTOOL_DIR}/lib/interactive.sh"
-[[ -f "${SWARMTOOL_DIR}/lib/resume.sh" ]]      && source "${SWARMTOOL_DIR}/lib/resume.sh"
+[[ -f "${SWARMTOOL_DIR}/lib/resume.sh" ]]       && source "${SWARMTOOL_DIR}/lib/resume.sh"
+[[ -f "${SWARMTOOL_DIR}/lib/conventions.sh" ]]  && source "${SWARMTOOL_DIR}/lib/conventions.sh"
+[[ -f "${SWARMTOOL_DIR}/lib/fix.sh" ]]          && source "${SWARMTOOL_DIR}/lib/fix.sh"
 
 # ── CLI Argument Parsing ────────────────────────────────────────────────────
 GOAL=""
@@ -33,6 +35,8 @@ DRY_RUN=false
 VERBOSE=false
 SHOW_CONFIG=false
 LIST_RUNS=false
+FIX_MODE=false
+FIX_DIR="."
 
 usage() {
     cat <<EOF
@@ -50,6 +54,7 @@ ${BOLD}OPTIONS${NC}
     --goal <text>         Set the goal (alternative to positional argument)
     --resume <run-id>     Resume an interrupted run
     --list                List all runs and their status
+    --fix [dir]           Fix integration issues in merged code (default: current dir)
     --max-workers <n>     Set max concurrent workers (default: auto)
     --planner-model <m>   Model for planner (default: opus)
     --worker-model <m>    Model for workers (default: sonnet)
@@ -65,6 +70,7 @@ ${BOLD}EXAMPLES${NC}
     swarmtool "Add user authentication with JWT"
     swarmtool --goal "Refactor the database layer" --max-workers 3
     swarmtool --resume abc12345
+    swarmtool --fix                    # Fix integration issues in current directory
     swarmtool --list
 
 ${BOLD}ARCHITECTURE${NC}
@@ -97,6 +103,15 @@ while [[ $# -gt 0 ]]; do
             ;;
         --list)
             LIST_RUNS=true
+            shift
+            ;;
+        --fix)
+            FIX_MODE=true
+            # Check if next arg is a directory (not a flag)
+            if [[ "${2:-}" && ! "${2:-}" =~ ^- ]]; then
+                FIX_DIR="$2"
+                shift
+            fi
             shift
             ;;
         --dry-run)
@@ -149,6 +164,16 @@ if [[ "$LIST_RUNS" == "true" ]]; then
     exit 0
 fi
 
+# ── Fix Mode ───────────────────────────────────────────────────────────────
+if [[ "$FIX_MODE" == "true" ]]; then
+    if type run_fix_command &>/dev/null; then
+        run_fix_command "$FIX_DIR"
+        exit $?
+    else
+        die "Fix module not available."
+    fi
+fi
+
 # ── Prerequisites ───────────────────────────────────────────────────────────
 check_prerequisites
 
@@ -192,6 +217,12 @@ CURRENT_RUN_ID="$RUN_ID"
 CURRENT_RUN_DIR="$RUN_DIR"
 
 log "$RUN_ID" "INIT" "Run initialized: $GOAL"
+
+# Generate conventions file for consistent worker output
+if type generate_conventions_file &>/dev/null; then
+    generate_conventions_file "$RUN_DIR" "."
+    log "$RUN_ID" "INIT" "Generated conventions file"
+fi
 
 if [[ "$VERBOSE" == "true" ]]; then
     dump_config

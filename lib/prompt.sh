@@ -38,9 +38,10 @@ render_template() {
 # ── Worker Prompt Construction ──────────────────────────────────────────────
 
 # Build the full worker prompt from a task spec file
-# Usage: build_worker_prompt <spec_file>
+# Usage: build_worker_prompt <spec_file> [run_dir]
 build_worker_prompt() {
     local spec_file="$1"
+    local run_dir="${2:-}"
 
     local title description input_files expected_output success_criteria boundaries
     title=$(taskspec_get "$spec_file" "TASK_TITLE")
@@ -49,6 +50,15 @@ build_worker_prompt() {
     expected_output=$(taskspec_get_block "$spec_file" "TASK_EXPECTED_OUTPUT")
     success_criteria=$(taskspec_get_block "$spec_file" "TASK_SUCCESS_CRITERIA")
     boundaries=$(taskspec_get_block "$spec_file" "TASK_BOUNDARIES")
+
+    # Load conventions if available
+    local conventions=""
+    if [[ -n "$run_dir" ]] && type load_conventions &>/dev/null; then
+        load_conventions "$run_dir"
+        if type format_conventions_for_prompt &>/dev/null; then
+            conventions=$(format_conventions_for_prompt)
+        fi
+    fi
 
     local template_file="${SWARMTOOL_DIR}/prompts/worker_execute.txt"
 
@@ -59,7 +69,8 @@ build_worker_prompt() {
             "INPUT_FILES=${input_files}" \
             "EXPECTED_OUTPUT=${expected_output}" \
             "SUCCESS_CRITERIA=${success_criteria}" \
-            "BOUNDARIES=${boundaries}"
+            "BOUNDARIES=${boundaries}" \
+            "CONVENTIONS=${conventions}"
     else
         # Fallback: inline prompt construction
         cat <<PROMPT

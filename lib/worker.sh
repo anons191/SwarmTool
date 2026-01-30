@@ -169,7 +169,7 @@ launch_worker() {
 
     # ── Step 2: Build the prompt ──────────────────────────────────────────
     local worker_prompt
-    worker_prompt=$(build_worker_prompt "$spec_file")
+    worker_prompt=$(build_worker_prompt "$spec_file" "$run_dir")
 
     # ── Step 3: Determine worker settings ─────────────────────────────────
     local worker_model budget

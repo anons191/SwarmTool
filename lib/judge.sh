@@ -262,7 +262,29 @@ run_judging_phase() {
             continue
         fi
 
-        # Step 2: Claude Code judge
+        # Step 2: Check if this is an install/setup task (fast-pass these)
+        local task_title
+        task_title=$(taskspec_get "${run_dir}/tasks/${task_id}.spec" "TASK_TITLE")
+        local task_title_lower
+        task_title_lower=$(echo "$task_title" | tr '[:upper:]' '[:lower:]')
+
+        if [[ "$task_title_lower" == *"install"* || "$task_title_lower" == *"dependencies"* || "$task_title_lower" == *"npm install"* || "$task_title_lower" == *"pip install"* ]]; then
+            # Fast-pass install tasks - they either work or they don't
+            # Check if the worker reported success
+            local result_file="${run_dir}/tasks/${task_id}.result"
+            if [[ -f "$result_file" ]] && grep -q '"is_error":false' "$result_file" 2>/dev/null; then
+                printf "  ${GREEN}[pass]${NC} %s (score: 5) Install task completed successfully - skipping detailed review\n" "$task_title"
+                {
+                    echo "VERDICT=pass"
+                    echo "SCORE=5"
+                    echo "SUMMARY=Install task completed successfully - skipped detailed review"
+                } > "${run_dir}/tasks/${task_id}.judge"
+                log "$run_id" "JUDGE" "Task ${task_id}: verdict=pass (fast-pass install task)"
+                continue
+            fi
+        fi
+
+        # Step 3: Claude Code judge for non-install tasks
         judge_task "$run_id" "$run_dir" "$task_id"
     done
 

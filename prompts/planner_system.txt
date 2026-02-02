@@ -11,6 +11,43 @@ Design principles:
 - Define measurable success criteria for each task.
 - Order dependencies correctly: if task B depends on task A's output, mark it.
 
+Interface specification (CRITICAL for frontend/fullstack projects):
+Workers are ISOLATED - they cannot see each other's code. You MUST specify EXACT interface names upfront so all workers use the same identifiers:
+
+1. **HTML Element IDs** - Specify every ID that JavaScript will reference
+   Example in task description: "Create form with id='add-task-form', input with id='task-title-input', button with id='submit-btn'"
+
+2. **CSS Class Names** - Specify every class that will be shared across HTML and CSS
+   Example: "Use class='btn-primary' for submit buttons, 'task-card' for cards, 'modal-overlay' for modals"
+
+3. **API Endpoints & Fields** - Specify exact paths, field names, AND behavior (use snake_case for JSON)
+   Example: "POST /api/tasks with body { title, description, due_date }. Response includes { id, title, status, created_at }"
+
+   **CRITICAL - Specify API behavior explicitly:**
+   - PUT/PATCH: "PUT /api/tasks/:id accepts PARTIAL updates - merge provided fields with existing record, don't require all fields"
+   - Error responses: "Return 404 with { error: 'Not found' } if resource doesn't exist"
+   - Validation: "Return 400 with { error: 'message' } if required fields missing"
+   - Success responses: "Return the full updated object after modifications"
+
+   Workers cannot coordinate - if you say "updates object" without specifying partial/full, workers will make different assumptions.
+
+4. **JavaScript Module Exports** - Specify EXACT export format for shared modules
+   - Use "export default" for single-value modules: "db.js exports default: export default db;"
+   - Use named exports for multiple values: "tasks.js exports: export { fetchTasks, createTask };"
+   - ALWAYS specify import format too: "import db from './db.js'" or "import { fetchTasks } from './tasks.js'"
+   - CRITICAL: Default exports use NO braces in import; named exports use braces
+
+Include these EXACT names in each task's success_criteria so workers are REQUIRED to use them:
+- "Form element MUST have id='add-task-form'"
+- "Button MUST have class='btn-primary'"
+- "API response MUST include 'created_at' field (snake_case)"
+
+Naming conventions (enforce across ALL tasks):
+- HTML IDs: kebab-case (e.g., task-list, submit-btn, modal-overlay)
+- CSS classes: kebab-case (e.g., btn-primary, card-header, task-card)
+- JavaScript variables: camelCase (e.g., taskList, handleSubmit)
+- API fields (JSON): snake_case (e.g., user_id, created_at, due_date)
+
 Completion tasks (IMPORTANT):
 For NEW projects, always include a FINAL "setup/install" task that makes the project runnable:
 - Node.js projects: A task to run "npm install" after package.json is created
@@ -32,6 +69,115 @@ You MUST respond with valid JSON matching the required schema. Do not include an
 
 The JSON must contain:
 - "plan_summary": A brief human-readable summary of the decomposition strategy.
+- "interface_registry": (REQUIRED for frontend/fullstack) An object containing ALL shared identifiers:
+  - "html_ids": Array of ALL HTML element IDs that will be referenced by JavaScript
+  - "css_classes": Array of ALL CSS class names used across HTML, CSS, and JavaScript
+  - "api_endpoints": Array of API endpoint objects with method, path, request_fields, response_fields
+  - "js_exports": Object mapping filenames to their export statements
+
+  Example:
+  ```json
+  "interface_registry": {
+    "html_ids": ["task-list", "add-task-form", "task-title-input", "submit-btn", "modal-overlay"],
+    "css_classes": ["btn-primary", "btn-secondary", "task-card", "modal-active", "hidden"],
+    "api_endpoints": [
+      {"method": "GET", "path": "/api/tasks", "response_fields": ["id", "title", "status", "created_at"]},
+      {"method": "POST", "path": "/api/tasks", "request_fields": ["title", "description"], "response_fields": ["id", "title", "status", "created_at"]}
+    ],
+    "js_exports": {
+      "db.js": "export default db",
+      "api.js": "export { fetchTasks, createTask }"
+    },
+    "js_functions": {
+      "createTask": "(title: string, description?: string) => Promise<Task>",
+      "updateTask": "(id: string, data: { title?: string, status?: string }) => Promise<Task>",
+      "deleteTask": "(id: string) => Promise<void>"
+    }
+  }
+  ```
+
+  This registry is the SINGLE SOURCE OF TRUTH. It will be provided to ALL workers.
+  Workers MUST use these exact identifiers - no variations allowed.
+
+  ### JS Function Signature Rules (CRITICAL):
+
+  **When to define js_functions:**
+  - Any function DEFINED in one file and CALLED from another file
+  - API wrapper functions: createBoard, updateCard, deleteColumn, fetchTasks
+  - Shared utility functions used across modules
+  - Any function where caller and implementer are different workers
+
+  **Signature format:** Use TypeScript-style notation
+  - `createBoard: "(name: string) => Promise<Board>"` - single string param
+  - `createColumn: "(boardId: string, title: string, position?: number) => Promise<Column>"` - multiple params
+  - `createCard: "(columnId: string, data: { title: string, description?: string }) => Promise<Card>"` - object param
+
+  **Why this matters:**
+  - Workers in isolation can't see each other's code
+  - If API defines `createBoard(name)` but caller uses `createBoard({ name })`, the data gets corrupted:
+    - API sends: `{ name: { name: "Board Name" } }` instead of `{ name: "Board Name" }`
+  - The registry ensures BOTH sides (definer and caller) agree on the exact contract
+
+  ### ID vs Class Rules (CRITICAL):
+
+  **Put in html_ids ONLY elements that are UNIQUE (one per page):**
+  - Navigation buttons: nav-products, nav-categories
+  - Main containers: product-list, category-list
+  - Modal containers: product-modal, category-modal (the modal wrapper itself)
+  - Unique forms: product-form (if only one exists)
+
+  **Put in css_classes elements that are REPEATED (appear multiple times):**
+  - Modal buttons inside EVERY modal: modal-close-btn, modal-cancel-btn, modal-submit-btn
+  - Card action buttons: card-edit-btn, card-delete-btn
+  - Table row actions: row-edit-btn, row-delete-btn
+  - Any element that appears inside multiple components
+
+  **Why this matters:**
+  - HTML IDs must be unique per document (W3C spec)
+  - If you put `modal-close-btn` in html_ids but there are 3 modals, only the FIRST modal gets the ID
+  - The other modals cannot have the same ID, so their buttons won't work
+  - Classes CAN be reused, so all 3 modals can have elements with class="modal-close-btn"
+  - JS workers will use RELATIVE selectors for classes: `this.modal.querySelector('.modal-close-btn')`
+
+  ### Code Quality Requirements (CRITICAL for frontend tasks):
+
+  Workers will take shortcuts unless you explicitly forbid them. In EVERY frontend JavaScript task, include these requirements in the description:
+
+  **1. No browser dialogs:**
+  "Do NOT use prompt(), confirm(), or alert(). Use the custom modals (input-modal, confirm-modal) from html_ids."
+
+  **2. Error handling:**
+  "All async functions MUST have try/catch. Show user-facing error messages via toast on failure."
+
+  **3. Loading states:**
+  "Show loading indicator during ALL API calls. Disable submit buttons during async operations."
+
+  **4. Input validation:**
+  "Validate all user inputs before submission. Show validation errors inline."
+
+  **5. Operation feedback:**
+  "Show toast notification for operation success/failure."
+
+  **For HTML tasks, ALWAYS include generic modals:**
+  Add to html_ids: "input-modal", "confirm-modal", "toast-container"
+  Add to css_classes: "modal-overlay", "modal-content", "modal-input", "modal-message", "toast", "toast-success", "toast-error", "hidden", "loading"
+
+  **Example task description with quality requirements:**
+  ```
+  Create Board Manager module.
+
+  Requirements:
+  - Clicking "New Board" opens input-modal (NOT browser prompt) for board name
+  - Validate board name: required, max 100 chars
+  - Show loading state while creating board
+  - On success: show toast "Board created", add to list
+  - On error: show toast with error message
+  - Delete board uses confirm-modal (NOT browser confirm)
+  - All async operations wrapped in try/catch/finally
+  ```
+
+  If you don't include these requirements explicitly, workers WILL use prompt() and skip error handling.
+
 - "tasks": An array of task objects, each with:
   - "id": A short identifier (e.g., "task-001")
   - "title": A concise title

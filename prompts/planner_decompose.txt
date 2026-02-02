@@ -17,3 +17,83 @@ Remember:
 - Each worker only knows about its specific task. Do not reference other tasks in descriptions.
 - Prefer more, smaller tasks over fewer, larger ones (within reason).
 - If tasks must happen in sequence, use the "depends_on" field.
+
+CRITICAL for frontend/fullstack projects:
+Since workers are isolated, they WILL use different names for the same things unless you specify exact names.
+
+In EVERY task description, include EXACT identifiers:
+- HTML: "Create element with id='task-list'" (not "create a task list element")
+- CSS: "Style with class='btn-primary'" (not "style the button")
+- API: "POST /api/tasks returns { id, title, status, created_at }" (exact field names)
+- Modules: "export default db" or "export { fetchTasks }" (exact export style)
+
+For API endpoints, specify BEHAVIOR not just paths:
+- "PUT /api/tasks/:id accepts PARTIAL updates - only update fields provided in request body, keep existing values for omitted fields"
+- "Return 404 { error: 'Not found' } if task doesn't exist"
+- "Return the complete updated object after any modification"
+
+Workers cannot coordinate - ambiguous specs like "updates object" cause mismatches.
+
+In success_criteria, REQUIRE the exact names:
+- "Element MUST have id='task-list'"
+- "Button MUST have class='btn-primary'"
+- "API response MUST use snake_case field names"
+
+If an HTML worker creates id='task-list', the JS worker MUST reference getElementById('task-list').
+If a CSS worker styles .btn-primary, the HTML worker MUST use class='btn-primary'.
+YOU define these names upfront. Workers just follow your spec exactly.
+
+INTERFACE REGISTRY (REQUIRED):
+You MUST create an "interface_registry" object in your JSON output containing ALL shared identifiers:
+- html_ids: Every HTML ID that JavaScript will reference
+- css_classes: Every CSS class used across HTML, CSS, and JavaScript
+- api_endpoints: Every API endpoint with method, path, and field names
+- js_exports: Every shared module's export format
+- js_functions: Function signatures for ANY function defined in one file and called from another
+
+This registry will be provided to ALL workers as the single source of truth.
+Workers will be REQUIRED to use these exact names - no variations.
+If you don't include an ID in the registry and a worker uses it, the build will fail.
+
+CRITICAL - JS FUNCTION SIGNATURES:
+For js_functions, ALWAYS define signatures for cross-module API functions:
+- `createBoard: "(name: string) => Promise<Board>"` - takes a STRING, not an object
+- `createColumn: "(boardId: string, title: string, position?: number) => Promise<Column>"` - separate params
+- `updateCard: "(id: string, data: { title?: string }) => Promise<Card>"` - object param when appropriate
+
+If you don't specify, one worker might define `createBoard(name)` while another calls `createBoard({ name })`.
+The mismatch corrupts data and breaks the app silently.
+
+CRITICAL - ID vs CLASS DISTINCTION:
+- Put UNIQUE elements (one per page) in html_ids: nav-products, product-list, product-modal
+- Put REPEATED patterns (multiple instances) in css_classes: modal-close-btn, modal-cancel-btn, card-edit-btn
+
+If multiple modals exist, their internal buttons MUST be classes, NOT IDs:
+- WRONG: html_ids includes "modal-close-btn" → only first modal gets the ID, others break
+- RIGHT: css_classes includes "modal-close-btn" → all modals can use this class
+
+JS workers will use relative selectors for classes: `this.modal.querySelector('.modal-close-btn')`
+
+Think of the interface_registry as an API contract between isolated workers.
+
+CODE QUALITY (CRITICAL):
+Workers will take shortcuts unless you explicitly forbid them. Every frontend JavaScript task description MUST explicitly state:
+
+1. "Do NOT use prompt(), confirm(), alert() - use custom modals (input-modal, confirm-modal)"
+2. "All async functions MUST have try/catch with user-facing error messages"
+3. "Show loading state during ALL API calls - disable buttons, show spinner"
+4. "Validate all user inputs before submission - show inline errors"
+5. "Show toast notifications for operation success/failure"
+
+For HTML tasks, ALWAYS include these in html_ids:
+- "input-modal" - for user text input (replaces prompt())
+- "confirm-modal" - for destructive action confirmations (replaces confirm())
+- "toast-container" - for success/error notifications
+
+And these in css_classes:
+- "modal-overlay", "modal-content", "modal-input", "modal-message"
+- "modal-close-btn", "modal-cancel-btn", "modal-submit-btn", "modal-confirm-btn"
+- "toast", "toast-success", "toast-error"
+- "hidden", "loading"
+
+If you don't include these quality requirements in EVERY frontend task, workers WILL use browser dialogs and skip error handling. Be explicit.

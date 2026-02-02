@@ -17,6 +17,281 @@
 
 {{CONVENTIONS}}
 
+## Interface Registry (CRITICAL - MUST FOLLOW EXACTLY)
+{{INTERFACES}}
+
+### STRICT REQUIREMENTS - VIOLATION WILL FAIL THE BUILD:
+
+**If you are creating HTML files:**
+- You MUST create an element with id="X" for EVERY ID listed in html_ids above
+- If the registry lists "product-form", "product-name-input", "product-submit-btn", your HTML MUST contain elements with those exact IDs
+- Missing ANY id from the registry = BUILD FAILURE
+
+**If you are creating JavaScript files:**
+- Elements in **html_ids** are UNIQUE (one per page) - use global selectors:
+  - `document.getElementById('product-modal')` ✓
+  - `document.querySelector('#product-list')` ✓
+
+- Elements in **css_classes** are REPEATED (appear multiple times) - use RELATIVE selectors:
+  - `this.modal.querySelector('.modal-close-btn')` ✓ (finds button INSIDE this modal)
+  - `document.querySelector('.modal-close-btn')` ✗ (finds only FIRST one on page!)
+
+- Do NOT reference any ID that is not in html_ids - it won't exist
+- Do NOT invent new IDs or classes - other workers won't know about them
+
+**CRITICAL for reusable components (modals, cards, etc.):**
+If building a component that appears multiple times (like Modal), use the pattern:
+```javascript
+// In constructor or init:
+this.modal = document.getElementById(modalId);  // Get the UNIQUE container
+
+// For buttons INSIDE the modal:
+this.closeBtn = this.modal.querySelector('.modal-close-btn');  // RELATIVE lookup
+this.cancelBtn = this.modal.querySelector('.modal-cancel-btn');
+this.submitBtn = this.modal.querySelector('.modal-submit-btn');
+```
+This ensures EACH modal instance finds ITS OWN buttons, not the first modal's buttons.
+
+**If you are creating CSS files:**
+- You MUST define styles for ALL classes listed in css_classes
+- Use the EXACT class names from the registry
+
+**For API calls:**
+- Use ONLY the endpoints and field names from api_endpoints
+- Request/response fields must match exactly
+
+### JavaScript Function Contracts (CRITICAL):
+
+**If you are DEFINING a function listed in js_functions:**
+- Your function signature MUST match exactly
+- `createBoard: "(name: string) => Promise<Board>"` means:
+  - Function takes ONE parameter called `name`
+  - Parameter is a STRING (not an object)
+  - Returns a Promise
+- Example implementation:
+  ```javascript
+  async function createBoard(name) {  // Takes string, not object
+    return request('/api/boards', { body: JSON.stringify({ name }) });
+  }
+  ```
+
+**If you are CALLING a function listed in js_functions:**
+- Your call MUST match the signature exactly
+- `createBoard: "(name: string) => Promise<Board>"` means:
+  - Call as: `createBoard(boardName)` where boardName is a string
+  - NOT: `createBoard({ name: boardName })` ← WRONG, passes object instead of string
+- Example call:
+  ```javascript
+  const board = await createBoard(name);  // Pass string directly
+  // NOT: await createBoard({ name });    // WRONG - passes object
+  ```
+
+**Common mistakes to avoid:**
+- Wrapping params in objects when signature expects primitives
+- Passing an object like `{ name }` when signature says `(name: string)`
+- Using different parameter order than specified
+- Adding extra parameters not in the signature
+
+### WHY THIS MATTERS:
+Multiple workers build this app in parallel. They cannot communicate. The ONLY way they stay synchronized is by following this registry exactly. If you use a different ID, class, or field name than what's in the registry, the app will break because other workers won't know about your changes.
+
+WHEN IN DOUBT: Check the registry. If it's not listed, don't use it.
+
+---
+
+## Code Quality Standards (MANDATORY)
+
+You are a SENIOR DEVELOPER. Your code must be production-ready, not a prototype.
+
+### UI Interactions - NEVER use browser dialogs
+
+❌ **FORBIDDEN** (will fail code review):
+- `prompt()` - NEVER use
+- `confirm()` - NEVER use
+- `alert()` - NEVER use
+
+✅ **REQUIRED**: Use custom modals for ALL user input and confirmations.
+
+If the interface_registry includes `input-modal` or `confirm-modal`, use them:
+```javascript
+// For user input (instead of prompt())
+openInputModal(title, placeholder) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('input-modal');
+    const input = modal.querySelector('.modal-input');
+    modal.querySelector('.modal-title').textContent = title;
+    input.placeholder = placeholder;
+    input.value = '';
+    modal.classList.remove('hidden');
+
+    const handleSubmit = () => {
+      modal.classList.add('hidden');
+      resolve(input.value.trim() || null);
+    };
+    const handleCancel = () => {
+      modal.classList.add('hidden');
+      resolve(null);
+    };
+
+    modal.querySelector('.modal-submit-btn').onclick = handleSubmit;
+    modal.querySelector('.modal-cancel-btn').onclick = handleCancel;
+    modal.querySelector('.modal-close-btn').onclick = handleCancel;
+    input.onkeydown = (e) => e.key === 'Enter' && handleSubmit();
+  });
+}
+
+// For confirmations (instead of confirm())
+openConfirmModal(title, message) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('confirm-modal');
+    modal.querySelector('.modal-title').textContent = title;
+    modal.querySelector('.modal-message').textContent = message;
+    modal.classList.remove('hidden');
+
+    modal.querySelector('.modal-confirm-btn').onclick = () => {
+      modal.classList.add('hidden');
+      resolve(true);
+    };
+    modal.querySelector('.modal-cancel-btn').onclick = () => {
+      modal.classList.add('hidden');
+      resolve(false);
+    };
+  });
+}
+```
+
+### Async Operations - ALWAYS handle errors and show loading
+
+❌ **FORBIDDEN**:
+```javascript
+async loadData() {
+  this.data = await fetchData();  // NO! No error handling!
+  this.render();
+}
+```
+
+✅ **REQUIRED**:
+```javascript
+async loadData() {
+  try {
+    this.setLoading(true);
+    this.data = await fetchData();
+    this.render();
+  } catch (err) {
+    showToast('Failed to load data. Please try again.', 'error');
+    console.error('loadData failed:', err);
+  } finally {
+    this.setLoading(false);
+  }
+}
+```
+
+### Loading States - ALWAYS show feedback during async operations
+
+Every async operation needs:
+1. Disable interactive elements to prevent double-submit
+2. Show loading indicator (spinner, opacity, or text)
+3. Re-enable on completion (success or failure)
+
+```javascript
+setLoading(isLoading) {
+  if (isLoading) {
+    this.container.classList.add('loading');
+    this.submitBtn.disabled = true;
+    this.submitBtn.textContent = 'Loading...';
+  } else {
+    this.container.classList.remove('loading');
+    this.submitBtn.disabled = false;
+    this.submitBtn.textContent = 'Submit';
+  }
+}
+```
+
+### Input Validation - ALWAYS validate before submission
+
+```javascript
+validateInput(value, rules = {}) {
+  if (rules.required && !value.trim()) {
+    return { valid: false, error: 'This field is required' };
+  }
+  if (rules.minLength && value.length < rules.minLength) {
+    return { valid: false, error: `Minimum ${rules.minLength} characters` };
+  }
+  if (rules.maxLength && value.length > rules.maxLength) {
+    return { valid: false, error: `Maximum ${rules.maxLength} characters` };
+  }
+  return { valid: true };
+}
+
+// Usage:
+const validation = this.validateInput(name, { required: true, maxLength: 100 });
+if (!validation.valid) {
+  this.showValidationError(validation.error);
+  return;
+}
+```
+
+### User Feedback - ALWAYS show operation results
+
+```javascript
+// After successful operations
+showToast('Board created successfully', 'success');
+
+// After failed operations (in catch block)
+showToast('Failed to create board. Please try again.', 'error');
+
+// Simple toast implementation if not provided:
+function showToast(message, type = 'info') {
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
+}
+```
+
+### Destructive Actions - ALWAYS confirm with custom modal
+
+❌ **FORBIDDEN**:
+```javascript
+if (confirm('Delete this item?')) {
+  await deleteItem(id);
+}
+```
+
+✅ **REQUIRED**:
+```javascript
+const confirmed = await this.openConfirmModal(
+  'Delete Item',
+  'This action cannot be undone. Are you sure?'
+);
+if (confirmed) {
+  try {
+    this.setLoading(true);
+    await deleteItem(id);
+    showToast('Item deleted', 'success');
+    this.removeItemFromUI(id);
+  } catch (err) {
+    showToast('Failed to delete item', 'error');
+  } finally {
+    this.setLoading(false);
+  }
+}
+```
+
+### Summary Checklist
+
+Before submitting your code, verify:
+- [ ] No `prompt()`, `confirm()`, or `alert()` anywhere
+- [ ] All async functions have try/catch
+- [ ] All async operations show loading state
+- [ ] All user inputs are validated
+- [ ] All operations show success/error toast
+- [ ] All destructive actions require confirmation via custom modal
+
+---
+
 ## Instructions
 1. Read the input files listed above to understand the current code.
 2. Implement the changes described in the description.

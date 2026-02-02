@@ -254,9 +254,49 @@ run_merge_phase() {
 
     echo ""
 
-    # ── Stage 3: Final validation ───────────────────────────────────────
+    # ── Stage 3: Integration validation gate ────────────────────────────
+    printf "${DIM}Running integration validation...${NC}\n"
+
+    local integration_issues=""
+    if type analyze_integration_issues &>/dev/null; then
+        integration_issues=$(analyze_integration_issues ".")
+    fi
+
+    if [[ -n "$integration_issues" ]]; then
+        printf "\n${YELLOW}Integration issues detected:${NC}\n"
+        echo "$integration_issues" | head -20
+
+        # Auto-fix if enabled and fix functions are available
+        if [[ "${SWARMTOOL_AUTO_FIX:-true}" == "true" ]] && type run_fixer_agent &>/dev/null; then
+            printf "\n${DIM}Running automatic fix...${NC}\n"
+            run_fixer_agent "" "$integration_issues" "." >>"$merge_log" 2>&1 || true
+
+            # Commit any fixer changes (required before checkout)
+            if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
+                git add -A
+                git commit -m "swarmtool: auto-fix integration issues" >>"$merge_log" 2>&1 || true
+            fi
+
+            # Re-validate after fix
+            integration_issues=$(analyze_integration_issues ".")
+            if [[ -z "$integration_issues" ]]; then
+                printf "${GREEN}Integration issues resolved.${NC}\n"
+            else
+                printf "${YELLOW}Some issues remain after auto-fix:${NC}\n"
+                echo "$integration_issues" | head -10
+            fi
+        else
+            printf "${YELLOW}Auto-fix disabled or unavailable. Manual fix may be needed.${NC}\n"
+        fi
+    else
+        printf "${GREEN}Integration validation passed.${NC}\n"
+    fi
+
+    echo ""
+
+    # ── Stage 4: Final build validation ─────────────────────────────────
     if [[ "${SWARMTOOL_FINAL_VALIDATION:-true}" == "true" ]]; then
-        printf "${DIM}Running final validation...${NC}\n"
+        printf "${DIM}Running final build validation...${NC}\n"
 
         local validation_errors=""
 
@@ -271,11 +311,11 @@ run_merge_phase() {
             printf "${YELLOW}Final validation warnings:${NC} %s\n" "$validation_errors"
             log "$run_id" "MERGE" "Validation warnings: ${validation_errors}"
         else
-            printf "${GREEN}Final validation passed.${NC}\n"
+            printf "${GREEN}Final build validation passed.${NC}\n"
         fi
     fi
 
-    # ── Stage 4: Merge into base branch ─────────────────────────────────
+    # ── Stage 5: Merge into base branch ─────────────────────────────────
     echo ""
     local confirm="n"
     if [[ "${AUTO_APPROVE:-false}" == "true" ]]; then

@@ -175,7 +175,23 @@ get_convention() {
 # Usage: format_conventions_for_prompt
 format_conventions_for_prompt() {
     if [[ -z "${CONVENTIONS_JSON:-}" ]]; then
-        echo "No conventions specified. Use sensible defaults."
+        # Still provide strong defaults even without conventions file
+        cat <<'EOF'
+## Code Conventions (MANDATORY)
+
+**Naming Rules:**
+- HTML element IDs: kebab-case (e.g., `task-list`, `submit-btn`, `modal-overlay`)
+- CSS classes: kebab-case (e.g., `btn-primary`, `card-header`, `task-card`)
+- JavaScript variables/functions: camelCase (e.g., `taskList`, `handleSubmit`)
+- API fields (JSON): snake_case (e.g., `user_id`, `created_at`, `due_date`)
+
+**CRITICAL - Consistency Rules:**
+- If you create `class="close-btn"` in HTML, CSS MUST use `.close-btn` (NOT `.close-button`)
+- If you use `getElementById('task-form')`, HTML MUST have `id="task-form"`
+- If backend returns `project_id`, frontend MUST access `data.project_id` (NOT `data.projectId`)
+
+**Module System:** Use ESM (import/export), include .js extensions in imports.
+EOF
         return
     fi
 
@@ -185,7 +201,7 @@ format_conventions_for_prompt() {
     html_ids=$(get_convention "naming.htmlIds" "kebab-case")
 
     cat <<EOF
-## Code Conventions (MUST FOLLOW)
+## Code Conventions (MANDATORY)
 
 **Module System:**
 - Use ${module_style} style imports/exports
@@ -196,15 +212,19 @@ else
     echo "- Use \`require()\` and \`module.exports\`, NOT \`import\`/\`export\`"
 fi)
 
-**Naming Conventions:**
-- HTML element IDs: ${html_ids} (e.g., $(if [[ "$html_ids" == "kebab-case" ]]; then echo "user-name"; else echo "userName"; fi))
-- CSS classes: kebab-case (e.g., task-card, btn-primary)
-- JavaScript variables/functions: camelCase (e.g., userName, getUserById)
-- API request/response fields: ${api_fields} (e.g., $(if [[ "$api_fields" == "snake_case" ]]; then echo "user_id, created_at"; else echo "userId, createdAt"; fi))
-- Database columns: snake_case (e.g., user_id, created_at)
+**Naming Rules:**
+- HTML element IDs: ${html_ids} (e.g., \`task-list\`, \`submit-btn\`, \`modal-overlay\`)
+- CSS classes: kebab-case (e.g., \`btn-primary\`, \`card-header\`, \`task-card\`)
+- JavaScript variables/functions: camelCase (e.g., \`taskList\`, \`handleSubmit\`)
+- API request/response fields: ${api_fields} (e.g., $(if [[ "$api_fields" == "snake_case" ]]; then echo "\`user_id\`, \`created_at\`"; else echo "\`userId\`, \`createdAt\`"; fi))
+- Database columns: snake_case (e.g., \`user_id\`, \`created_at\`)
 
-**Critical:** Frontend code must match backend API field names exactly.
-If backend returns \`project_id\`, frontend must use \`data.project_id\`, NOT \`data.projectId\`.
+**CRITICAL - Consistency Rules:**
+- If you create \`class="close-btn"\` in HTML, CSS MUST use \`.close-btn\` (NOT \`.close-button\`)
+- If you use \`getElementById('task-form')\`, HTML MUST have \`id="task-form"\`
+- If backend returns \`project_id\`, frontend MUST access \`data.project_id\` (NOT \`data.projectId\`)
+
+These rules are NON-NEGOTIABLE. Mismatches break the application.
 EOF
 }
 

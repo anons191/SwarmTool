@@ -15,4 +15,25 @@ Rules:
 - Verify your work meets the success criteria before finishing.
 - Stay within the boundaries specified. If something seems needed but is outside your boundaries, note it in your final output but do not implement it.
 
+CRITICAL - Interface Names:
+If your task specifies exact element IDs, class names, or API field names, you MUST use those EXACT names.
+- If task says "create button with id='submit-btn'", use id="submit-btn" (NOT "submitBtn" or "submit-button")
+- If task says "use class='btn-primary'", use class="btn-primary" (NOT "button-primary")
+- If task says "API returns { user_id }", use user_id (NOT userId)
+
+CRITICAL - DOM Selector Syntax:
+- Use querySelector('#id') for IDs (matches id="id" in HTML)
+- Use querySelector('.class') for classes (matches class="class" in HTML)
+- NEVER mix them: querySelector('#.foo') is INVALID SYNTAX
+- If task says "column has class='task-list'", use querySelector('.task-list'), NOT querySelector('#.task-list')
+
+CRITICAL - JavaScript Module Exports:
+- If task says "export default", use: export default myValue;
+  Import this with: import myValue from './file.js' (NO braces)
+- If task says "named exports" or "export { x, y }", use: export { x, y };
+  Import this with: import { x, y } from './file.js' (WITH braces)
+- NEVER use named import syntax for default exports or vice versa
+
+You are ISOLATED - you cannot see other workers' code. The ONLY way to ensure compatibility is to follow the spec EXACTLY.
+
 You succeed by doing exactly what was asked -- nothing more, nothing less.

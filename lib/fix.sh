@@ -273,6 +273,97 @@ analyze_integration_issues() {
                 echo "IMPORT_EXTENSION: ESM imports missing .js extension: $missing_ext"
             fi
         fi
+
+        # NEW: Check for CSS class mismatches
+        # Extract classes used in JS via classList.add/remove/toggle and querySelector
+        local js_classes=""
+        js_classes=$(grep -rohE "classList\.(add|remove|toggle)\(['\"]([^'\"]+)['\"]" --include="*.js" . 2>/dev/null | \
+                     grep -v node_modules | \
+                     sed -E "s/classList\.(add|remove|toggle)\(['\"]([^'\"]+)['\"]/\2/" | \
+                     sort -u || true)
+
+        # Extract classes from querySelector('.class')
+        local qs_classes
+        qs_classes=$(grep -rohE "querySelector(All)?\(['\"]\.([^'\"#\[]+)['\"]" --include="*.js" . 2>/dev/null | \
+                     grep -v node_modules | \
+                     sed -E "s/querySelector(All)?\(['\"]\.([^'\"]+)['\"]/\2/" | \
+                     cut -d' ' -f1 | cut -d'.' -f1 | \
+                     sort -u || true)
+
+        # Extract classes defined in CSS files
+        local css_classes
+        css_classes=$(grep -rohE "\.[a-zA-Z][a-zA-Z0-9_-]*" --include="*.css" . 2>/dev/null | \
+                      grep -v node_modules | \
+                      sed 's/^\.//' | sort -u || true)
+
+        # Also check classes used in HTML
+        local html_classes
+        html_classes=$(grep -rohE 'class="[^"]*"' --include="*.html" . 2>/dev/null | \
+                       sed 's/class="//g; s/"//g' | tr ' ' '\n' | sort -u || true)
+
+        # Find JS classes not in CSS or HTML
+        for js_class in $js_classes $qs_classes; do
+            [[ -z "$js_class" ]] && continue
+            [[ "$js_class" == *"{"* ]] && continue  # Skip template literals
+            if ! echo "$css_classes" | grep -qx "$js_class" 2>/dev/null; then
+                if ! echo "$html_classes" | grep -qx "$js_class" 2>/dev/null; then
+                    echo "CSS_MISMATCH: JS uses class '$js_class' but it's not defined in CSS or HTML"
+                fi
+            fi
+        done
+
+        # NEW: Check querySelector('#id') references
+        local qs_ids
+        qs_ids=$(grep -rohE "querySelector(All)?\(['\"]#([^'\"]+)['\"]" --include="*.js" . 2>/dev/null | \
+                 grep -v node_modules | \
+                 sed -E "s/querySelector(All)?\(['\"]#([^'\"]+)['\"]/\2/" | \
+                 sort -u || true)
+
+        for qs_id in $qs_ids; do
+            [[ -z "$qs_id" ]] && continue
+            if [[ -n "$html_ids" ]] && ! echo "$html_ids" | grep -qx "$qs_id" 2>/dev/null; then
+                echo "SELECTOR_MISMATCH: JS querySelector('#$qs_id') but no id=\"$qs_id\" in HTML"
+            fi
+        done
+
+        # NEW: Check for inline style that might conflict with CSS classes
+        local inline_style_elements
+        inline_style_elements=$(grep -rohE '<[^>]+style="[^"]*"[^>]*class="[^"]*"' --include="*.html" . 2>/dev/null | wc -l | tr -d ' \n' || echo 0)
+        if [[ "$inline_style_elements" -gt 5 ]]; then
+            echo "STYLE_WARNING: Found $inline_style_elements elements with both inline styles and classes (potential conflicts)"
+        fi
+
+        # NEW: Check for runtime issues - try to start server and test
+        if [[ -f "package.json" ]]; then
+            local start_cmd
+            start_cmd=$(jq -r '.scripts.start // empty' package.json 2>/dev/null)
+
+            if [[ -n "$start_cmd" ]]; then
+                # Install deps silently if needed
+                [[ -d "node_modules" ]] || npm install --silent 2>/dev/null || true
+
+                # Try to start server briefly
+                timeout 5 npm start >/dev/null 2>&1 &
+                local server_pid=$!
+                sleep 2
+
+                if ! kill -0 $server_pid 2>/dev/null; then
+                    echo "RUNTIME_ERROR: Server failed to start - check for missing dependencies or syntax errors"
+                else
+                    # Check if server responds
+                    if command -v curl >/dev/null 2>&1; then
+                        local response
+                        response=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:3000/" 2>/dev/null || echo "000")
+                        if [[ "$response" == "000" ]]; then
+                            echo "RUNTIME_ERROR: Server started but not responding on port 3000"
+                        elif [[ "$response" == "500" ]]; then
+                            echo "RUNTIME_ERROR: Server returns 500 error on main page"
+                        fi
+                    fi
+                    kill $server_pid 2>/dev/null || true
+                fi
+            fi
+        fi
     )
 }
 
@@ -311,10 +402,30 @@ ${issues}
 1. Read the relevant files to understand the full context
 2. Fix ALL the issues listed above
 3. Common fixes needed:
-   - If module style mismatch: Convert all files to use the same style (ESM preferred for Node.js)
-   - If ID mismatch: Update JavaScript to use the IDs that exist in HTML
-   - If field name mismatch: Update frontend to use the same field names as backend API
-   - If import extension missing: Add .js extension to local imports
+
+   **MODULE_MISMATCH**: Convert all files to use the same style (ESM preferred for Node.js)
+
+   **ID_MISMATCH**: Update JavaScript to use the IDs that actually exist in HTML
+   - If JS has getElementById('taskForm') but HTML has id="task-form", fix JS to use 'task-form'
+
+   **CSS_MISMATCH**: JS references a CSS class that doesn't exist
+   - Add the missing class to your CSS file
+   - OR fix the JavaScript to use the correct class name that exists in CSS
+
+   **SELECTOR_MISMATCH**: querySelector('#x') or querySelector('.x') targets don't exist
+   - Add the missing element ID or class to HTML
+   - OR fix the selector in JavaScript
+
+   **FIELD_MISMATCH**: Frontend uses camelCase for snake_case API fields
+   - Change frontend to use exact field names from the API
+   - If backend returns 'user_id', frontend must use data.user_id NOT data.userId
+
+   **IMPORT_EXTENSION**: ESM imports missing .js extension
+   - Add .js extension to local imports: from './utils.js' not from './utils'
+
+   **RUNTIME_ERROR**: Server fails to start or respond
+   - Check for missing imports, syntax errors, or missing dependencies
+   - Verify all imported modules are installed
 
 4. After fixing, verify your changes would resolve the errors
 5. Do NOT add new features - only fix integration issues
@@ -325,6 +436,7 @@ ${issues}
 - Don't change functionality, only fix integration
 - Test that imports/exports match
 - Test that HTML IDs match JavaScript references
+- Test that CSS class names match between JS/HTML/CSS
 - Test that API field names match between frontend and backend
 EOF
 }

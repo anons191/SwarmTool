@@ -10,6 +10,15 @@ PLANNER_JSON_SCHEMA='{
   "type": "object",
   "properties": {
     "plan_summary": { "type": "string" },
+    "interface_registry": {
+      "type": "object",
+      "properties": {
+        "html_ids": { "type": "array", "items": { "type": "string" } },
+        "css_classes": { "type": "array", "items": { "type": "string" } },
+        "api_endpoints": { "type": "array", "items": { "type": "object" } },
+        "js_exports": { "type": "object" }
+      }
+    },
     "tasks": {
       "type": "array",
       "items": {
@@ -151,6 +160,21 @@ run_planning_phase() {
             idx=$((idx + 1))
         done
     } > "${run_dir}/plan.md"
+
+    # Extract and save interface registry (if present)
+    local interface_registry
+    interface_registry=$(echo "$plan_json" | jq '.interface_registry // {}')
+    if [[ "$interface_registry" != "{}" && "$interface_registry" != "null" ]]; then
+        echo "$interface_registry" > "${run_dir}/interfaces.json"
+        log "$run_id" "PLANNER" "Saved interface registry to interfaces.json"
+
+        # Log registry contents for visibility
+        local id_count class_count endpoint_count
+        id_count=$(echo "$interface_registry" | jq '.html_ids // [] | length')
+        class_count=$(echo "$interface_registry" | jq '.css_classes // [] | length')
+        endpoint_count=$(echo "$interface_registry" | jq '.api_endpoints // [] | length')
+        printf "${DIM}Interface registry: %s IDs, %s classes, %s endpoints${NC}\n" "$id_count" "$class_count" "$endpoint_count"
+    fi
 
     # Create task spec files from the JSON
     local created_count

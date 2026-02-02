@@ -9,10 +9,23 @@
 ## Instructions
 1. Review the git diff summary to see what files the worker changed.
 2. Read the modified files to understand the full context of the changes.
-3. Check each success criterion against the actual implementation.
-4. Identify any boundary violations or unintended changes.
-5. Provide your verdict as JSON.
+3. **Verify interfaces match** (CRITICAL):
+   - JS `getElementById('x')` calls must have matching `id="x"` in HTML
+   - JS `querySelector('.x')` calls must have matching `class="x"` in HTML/CSS
+   - CSS class selectors must match classes used in HTML
+   - API field names must be consistent (e.g., snake_case everywhere)
+4. **Check for basic functionality**:
+   - JS files should have no syntax errors
+   - If success criteria specify exact IDs/classes, verify they are used correctly
+5. Check each success criterion against the actual implementation.
+6. Identify any boundary violations or unintended changes.
+7. Provide your verdict as JSON.
 
 Use `git diff --stat HEAD~1` to see a summary of files changed (avoids massive output for large changes).
 Use `git diff HEAD~1 -- <filepath>` to see full diff for specific files only.
 Use `Read` to examine specific files in detail.
+
+**Common issues to catch:**
+- HTML has `class="close-btn"` but CSS styles `.close-button` (MISMATCH)
+- JS calls `getElementById('taskForm')` but HTML has `id="task-form"` (MISMATCH)
+- Backend returns `user_id` but frontend accesses `data.userId` (MISMATCH)

@@ -60,6 +60,28 @@ build_worker_prompt() {
         fi
     fi
 
+    # Load interface registry if available
+    local interfaces=""
+    local registry_file="${run_dir}/interfaces.json"
+    if [[ -n "$run_dir" && -f "$registry_file" ]]; then
+        # Format the registry for human-readable output
+        local html_ids css_classes api_endpoints js_exports js_functions
+        html_ids=$(jq -r '.html_ids // [] | if length > 0 then "HTML IDs (UNIQUE elements - use getElementById or querySelector(\"#id\")):\n" + (map("  - " + .) | join("\n")) else empty end' "$registry_file" 2>/dev/null)
+        css_classes=$(jq -r '.css_classes // [] | if length > 0 then "CSS Classes (REPEATED elements - use querySelector(\".\") RELATIVE to parent):\n" + (map("  - " + .) | join("\n")) else empty end' "$registry_file" 2>/dev/null)
+        api_endpoints=$(jq -r '.api_endpoints // [] | if length > 0 then "API Endpoints:\n" + (map("  - \(.method) \(.path)") | join("\n")) else empty end' "$registry_file" 2>/dev/null)
+        js_exports=$(jq -r '.js_exports // {} | if . != {} then "JS Exports:\n" + (to_entries | map("  - \(.key): \(.value)") | join("\n")) else empty end' "$registry_file" 2>/dev/null)
+        js_functions=$(jq -r '.js_functions // {} | if . != {} then "JS Function Contracts (MUST match exactly when defining OR calling):\n" + (to_entries | map("  - \(.key): \(.value)") | join("\n")) else empty end' "$registry_file" 2>/dev/null)
+
+        interfaces=""
+        [[ -n "$html_ids" ]] && interfaces="${interfaces}${html_ids}\n"
+        [[ -n "$css_classes" ]] && interfaces="${interfaces}${css_classes}\n"
+        [[ -n "$api_endpoints" ]] && interfaces="${interfaces}${api_endpoints}\n"
+        [[ -n "$js_exports" ]] && interfaces="${interfaces}${js_exports}\n"
+        [[ -n "$js_functions" ]] && interfaces="${interfaces}${js_functions}\n"
+        # Convert \n to actual newlines
+        interfaces=$(printf '%b' "$interfaces")
+    fi
+
     local template_file="${SWARMTOOL_DIR}/prompts/worker_execute.txt"
 
     if [[ -f "$template_file" ]]; then
@@ -70,7 +92,8 @@ build_worker_prompt() {
             "EXPECTED_OUTPUT=${expected_output}" \
             "SUCCESS_CRITERIA=${success_criteria}" \
             "BOUNDARIES=${boundaries}" \
-            "CONVENTIONS=${conventions}"
+            "CONVENTIONS=${conventions}" \
+            "INTERFACES=${interfaces}"
     else
         # Fallback: inline prompt construction
         cat <<PROMPT

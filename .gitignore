@@ -1,0 +1,18 @@
+# Development notes and logs
+notes
+notes.txt
+fixes.txt
+agent-swarm-coordination-notes.md
+
+# OS files
+.DS_Store
+*.swp
+*~
+
+# Test artifacts
+.swarmtool/
+testswarm/
+
+# Editor directories
+.vscode/
+.idea/

@@ -565,22 +565,19 @@ run_execution_phase() {
         # Poll interval
         sleep 2
 
-        # Show progress periodically using dashboard if available
-        local elapsed=$(( $(date +%s) - start_time ))
-        if type draw_dashboard &>/dev/null && [[ "${USE_FANCY_DISPLAY:-true}" == "true" ]]; then
-            # Move cursor up to redraw dashboard in place
-            cursor_up 15 2>/dev/null || true
-            clear_to_end 2>/dev/null || true
-            draw_dashboard "$run_dir" "$elapsed"
-        else
-            display_progress "$run_dir"
-        fi
+        # Show simple progress periodically
+        # Note: Don't use in-place dashboard redraw here - it conflicts with
+        # the [start]/[done]/[fail] status messages printed above and causes
+        # display corruption (cursor_up doesn't account for variable dashboard
+        # height or the status messages printed between redraws)
+        display_progress "$run_dir"
     done
 
     echo ""
-    # Final progress display
+    # Final progress display - show full dashboard at the end (no cursor manipulation needed)
     local elapsed=$(( $(date +%s) - start_time ))
     if type draw_dashboard &>/dev/null && [[ "${USE_FANCY_DISPLAY:-true}" == "true" ]]; then
+        echo ""
         draw_dashboard "$run_dir" "$elapsed"
     else
         display_progress "$run_dir"

@@ -114,6 +114,12 @@ init_run_dir() {
     # Write metadata
     local base_branch base_commit
     base_branch=$(get_current_branch)
+
+    # Ensure repo has at least one commit (required for worktrees)
+    if ! git rev-parse HEAD &>/dev/null; then
+        git commit --allow-empty -m "swarmtool: initial commit" >/dev/null 2>&1
+    fi
+
     base_commit=$(get_current_commit)
 
     cat > "${run_dir}/run.meta" <<EOF

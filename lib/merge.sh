@@ -148,9 +148,8 @@ run_merge_phase() {
     git checkout -b "$integration_branch" "$base_commit" >>"$merge_log" 2>&1 || {
         log_error "Failed to create integration branch"
         echo "failed" > "${merge_dir}/merge.status"
-        git stash -q 2>/dev/null || true
+        git checkout -- .swarmtool 2>/dev/null || true
         git checkout "$current_branch" 2>/dev/null
-        git stash pop -q 2>/dev/null || true
         return 1
     }
 
@@ -344,10 +343,10 @@ run_merge_phase() {
     fi
 
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
-        # Stash any uncommitted changes (like merge.log itself) before checkout
-        git stash -q 2>/dev/null || true
+        # Discard uncommitted changes to .swarmtool files before checkout
+        # (merge.log is just a log file, we don't need to preserve uncommitted changes)
+        git checkout -- .swarmtool 2>/dev/null || true
         git checkout "$base_branch" >>"$merge_log" 2>&1
-        git stash pop -q 2>/dev/null || true
         if git merge --no-edit "$integration_branch" >>"$merge_log" 2>&1; then
             printf "${GREEN}Successfully merged into %s.${NC}\n" "$base_branch"
             echo "complete" > "${merge_dir}/merge.status"
@@ -359,17 +358,15 @@ run_merge_phase() {
             printf "${RED}Failed to merge into %s.${NC}\n" "$base_branch"
             echo "failed" > "${merge_dir}/merge.status"
             git merge --abort 2>/dev/null
-            git stash -q 2>/dev/null || true
+            git checkout -- .swarmtool 2>/dev/null || true
             git checkout "$base_branch" 2>/dev/null
-            git stash pop -q 2>/dev/null || true
             log "$run_id" "MERGE" "FAILED to merge into ${base_branch}"
         fi
     else
         printf "Integration branch preserved: ${BOLD}%s${NC}\n" "$integration_branch"
         printf "Merge manually with: git merge %s\n" "$integration_branch"
-        git stash -q 2>/dev/null || true
+        git checkout -- .swarmtool 2>/dev/null || true
         git checkout "$base_branch" >>"$merge_log" 2>&1
-        git stash pop -q 2>/dev/null || true
         echo "preserved" > "${merge_dir}/merge.status"
     fi
 }

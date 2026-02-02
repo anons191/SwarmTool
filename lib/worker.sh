@@ -34,6 +34,47 @@ invoke_claude_with_retry() {
     return 1
 }
 
+# ── Worker Notes ───────────────────────────────────────────────────────────
+
+# Write worker notes file after task completion
+# This file is ONLY read by the planner on retry, NOT by other workers
+# Usage: write_worker_notes <run_dir> <task_id> <worktree> <log_file> <status>
+write_worker_notes() {
+    local run_dir="$1"
+    local task_id="$2"
+    local worktree="$3"
+    local log_file="$4"
+    local status="$5"  # "done" or "failed"
+
+    local notes_file="${run_dir}/tasks/${task_id}.notes"
+
+    # Get files created/modified from git
+    local files_changed=""
+    if [[ -d "$worktree/.git" || -d "$worktree" ]]; then
+        files_changed=$(cd "$worktree" 2>/dev/null && git diff --name-only HEAD~1 HEAD 2>/dev/null | head -20 | tr '\n' ', ')
+        [[ -z "$files_changed" ]] && files_changed=$(cd "$worktree" 2>/dev/null && git ls-files 2>/dev/null | head -20 | tr '\n' ', ')
+    fi
+
+    # Get last 50 lines of log for context
+    local log_tail=""
+    if [[ -f "$log_file" ]]; then
+        log_tail=$(tail -50 "$log_file" 2>/dev/null)
+    fi
+
+    # Write notes file
+    cat > "$notes_file" << EOF
+## Worker Notes for ${task_id}
+Status: ${status}
+Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+## Files Created/Modified
+${files_changed:-"none detected"}
+
+## Execution Log (last 50 lines)
+${log_tail:-"no log available"}
+EOF
+}
+
 # ── Git Lock for Thread Safety ─────────────────────────────────────────────
 
 # Acquire a lock for git operations (prevents race conditions)
@@ -260,10 +301,14 @@ launch_worker() {
             release_git_lock
             set_task_status "$run_dir" "$task_id" "done"
             log "$run_id" "WORKER" "Task ${task_id} completed with changes"
+            # Write notes for planner (used on retry if task fails judging)
+            write_worker_notes "$run_dir" "$task_id" "$abs_worktree" "$log_file" "done"
         else
             release_git_lock
             set_task_status "$run_dir" "$task_id" "done"
             log "$run_id" "WORKER" "Task ${task_id} completed (no file changes)"
+            # Write notes for planner (used on retry if task fails judging)
+            write_worker_notes "$run_dir" "$task_id" "$abs_worktree" "$log_file" "done"
         fi
     else
         # Check retry count
@@ -276,6 +321,8 @@ launch_worker() {
 
         set_task_status "$run_dir" "$task_id" "failed"
         log "$run_id" "WORKER" "Task ${task_id} FAILED (exit code ${llm_exit_code})"
+        # Write notes for planner (critical for retry to understand what went wrong)
+        write_worker_notes "$run_dir" "$task_id" "$abs_worktree" "$log_file" "failed"
     fi
 
     # ── Step 6: Cleanup PID file ──────────────────────────────────────────

@@ -30,6 +30,7 @@ source "${SWARMTOOL_DIR}/lib/cleanup.sh"
 [[ -f "${SWARMTOOL_DIR}/lib/fix.sh" ]]          && source "${SWARMTOOL_DIR}/lib/fix.sh"
 [[ -f "${SWARMTOOL_DIR}/lib/interview.sh" ]]    && source "${SWARMTOOL_DIR}/lib/interview.sh"
 [[ -f "${SWARMTOOL_DIR}/lib/display.sh" ]]      && source "${SWARMTOOL_DIR}/lib/display.sh"
+[[ -f "${SWARMTOOL_DIR}/lib/retry.sh" ]]        && source "${SWARMTOOL_DIR}/lib/retry.sh"
 
 # ── CLI Argument Parsing ────────────────────────────────────────────────────
 GOAL=""
@@ -372,6 +373,27 @@ else
     for task_id in $(list_tasks_by_status "$RUN_DIR" "done"); do
         echo "VERDICT=pass" > "${RUN_DIR}/tasks/${task_id}.judge"
     done
+fi
+
+# Step 7b: Retry failed tasks (if enabled)
+if [[ "${SWARMTOOL_RETRY_ENABLED:-true}" == "true" ]]; then
+    # Count failed tasks
+    failed_count=0
+    for judge_file in "$RUN_DIR"/tasks/*.judge; do
+        [[ ! -f "$judge_file" ]] && continue
+        verdict=$(grep "^VERDICT=" "$judge_file" 2>/dev/null | cut -d= -f2)
+        [[ "$verdict" == "fail" ]] && ((failed_count++))
+    done
+
+    if [[ $failed_count -gt 0 ]]; then
+        log "$RUN_ID" "MAIN" "Starting retry phase for $failed_count failed tasks"
+
+        if type run_retry_phase &>/dev/null; then
+            run_retry_phase "$RUN_ID" "$RUN_DIR"
+        else
+            log_warn "Retry module not available. Skipping retry phase."
+        fi
+    fi
 fi
 
 # Step 8: Merge phase

@@ -40,6 +40,10 @@ _SWARMTOOL_CONFIG_LOADED=1
 : "${SWARMTOOL_WORKER_MAX_RETRIES:=2}"
 : "${SWARMTOOL_RETRY_DELAY:=10}"         # seconds, doubles each retry
 
+# Retry loop settings (after judging, retry failed tasks with improved specs)
+: "${SWARMTOOL_RETRY_ENABLED:=true}"     # Enable retry loop for failed tasks
+: "${SWARMTOOL_MAX_RETRY_ROUNDS:=2}"     # Max rounds of retry (each round retries all failing tasks)
+
 # Merge settings
 : "${SWARMTOOL_AUTO_MERGE:=true}"
 : "${SWARMTOOL_FINAL_VALIDATION:=true}"

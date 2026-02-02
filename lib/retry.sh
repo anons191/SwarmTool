@@ -85,7 +85,7 @@ run_retry_phase() {
             fi
 
             # Re-execute worker (stays ignorant of previous attempt)
-            launch_worker "$run_id" "$spec_file" "$run_dir"
+            launch_worker "$run_id" "$run_dir" "$task_id"
 
             # Wait for worker to complete
             wait_for_task_completion "$run_dir" "$task_id" 300  # 5 min timeout

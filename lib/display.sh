@@ -83,7 +83,7 @@ spinner_start() {
         local idx=0
         local frame_count=${#SPINNER_FRAMES[@]}
         while true; do
-            printf '\r%s %s' "${SPINNER_FRAMES[$idx]}" "$message"
+            printf '\r%s %b' "${SPINNER_FRAMES[$idx]}" "$message"
             idx=$(( (idx + 1) % frame_count ))
             sleep 0.1
         done
@@ -214,7 +214,7 @@ show_architecture_inline() {
         local label="${labels[$i]}"
 
         if [[ "$phase" == "$current" ]]; then
-            printf '%s[%s]%s' "${CYAN}${BOLD}" "$label" "${NC}"
+            printf '%b[%s]%b' "${CYAN}${BOLD}" "$label" "${NC}"
         else
             printf '%s' "$label"
         fi

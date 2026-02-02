@@ -113,6 +113,12 @@ run_merge_phase() {
         show_architecture_inline "merging"
     fi
 
+    # Clean up any stale git state from previous runs
+    # This prevents "unmerged files" and stash conflicts
+    git merge --abort 2>/dev/null || true
+    git stash drop 2>/dev/null || true
+    git checkout -- . 2>/dev/null || true
+
     # Get base branch and commit
     local base_branch base_commit
     base_branch=$(get_run_meta "$run_dir" "BASE_BRANCH")
@@ -343,9 +349,9 @@ run_merge_phase() {
     fi
 
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
-        # Discard uncommitted changes to .swarmtool files before checkout
-        # (merge.log is just a log file, we don't need to preserve uncommitted changes)
-        git checkout -- .swarmtool 2>/dev/null || true
+        # Clean up any stale git state before final merge
+        git stash drop 2>/dev/null || true
+        git checkout -- . 2>/dev/null || true
         git checkout "$base_branch" >>"$merge_log" 2>&1
         if git merge --no-edit "$integration_branch" >>"$merge_log" 2>&1; then
             printf "${GREEN}Successfully merged into %s.${NC}\n" "$base_branch"

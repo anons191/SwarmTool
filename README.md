@@ -49,6 +49,14 @@ Workers are **isolated and ignorant**. They receive only the specific task, the 
 - **git** -- version control (worktrees require git 2.5+)
 - **claude** -- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
 - **jq** -- JSON processor (`brew install jq` on macOS)
+- **curl** -- for API-based providers (usually pre-installed)
+
+### Optional (for alternative LLM providers)
+
+- **Ollama** -- for local LLMs ([ollama.ai](https://ollama.ai))
+- **LM Studio** -- for local LLMs ([lmstudio.ai](https://lmstudio.ai))
+- **OpenAI API key** -- for GPT models
+- **OpenRouter API key** -- for access to multiple providers
 
 ## Installation
 
@@ -170,17 +178,28 @@ CLI flags > Environment variables > .swarmtool/config > defaults.conf
 ```bash
 swarmtool "goal" \
   --max-workers 3 \
-  --planner-model opus \
-  --worker-model sonnet \
-  --judge-model sonnet \
+  --planner claude:opus \
+  --worker claude:sonnet \
+  --judge claude:opus \
   --budget 10.00
+```
+
+### Multi-provider example
+
+Mix different LLM providers for different roles:
+
+```bash
+swarmtool "Build a todo app" \
+  --planner claude:opus \
+  --worker ollama:qwen2 \
+  --judge openai:gpt-4o
 ```
 
 ### Environment variables
 
 ```bash
 export SWARMTOOL_MAX_WORKERS=5
-export SWARMTOOL_WORKER_MODEL=sonnet
+export SWARMTOOL_WORKER=claude:sonnet
 export SWARMTOOL_TOTAL_BUDGET=15.00
 swarmtool "goal"
 ```
@@ -190,8 +209,13 @@ swarmtool "goal"
 Create `.swarmtool/config` in your project root:
 
 ```bash
-SWARMTOOL_PLANNER_MODEL=opus
-SWARMTOOL_WORKER_MODEL=sonnet
+# Provider:model format
+SWARMTOOL_PLANNER=claude:opus
+SWARMTOOL_WORKER=claude:sonnet
+SWARMTOOL_JUDGE=claude:opus
+SWARMTOOL_FIXER=claude:opus
+SWARMTOOL_MERGER=claude:opus
+
 SWARMTOOL_TOTAL_BUDGET=25.00
 SWARMTOOL_MAX_WORKERS=5
 ```
@@ -200,14 +224,15 @@ SWARMTOOL_MAX_WORKERS=5
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `SWARMTOOL_PLANNER_MODEL` | `opus` | Model for the planner |
-| `SWARMTOOL_WORKER_MODEL` | `sonnet` | Model for workers |
-| `SWARMTOOL_JUDGE_MODEL` | `sonnet` | Model for the judge |
-| `SWARMTOOL_MERGE_MODEL` | `sonnet` | Model for merge conflict resolution |
+| `SWARMTOOL_PLANNER` | `claude:opus` | Provider:model for the planner |
+| `SWARMTOOL_WORKER` | `claude:sonnet` | Provider:model for workers |
+| `SWARMTOOL_JUDGE` | `claude:opus` | Provider:model for the judge |
+| `SWARMTOOL_FIXER` | `claude:opus` | Provider:model for integration fixer |
+| `SWARMTOOL_MERGER` | `claude:opus` | Provider:model for merge conflict resolution |
 | `SWARMTOOL_PLANNER_BUDGET` | `2.00` | Max USD per planner invocation |
 | `SWARMTOOL_WORKER_BUDGET` | `1.00` | Max USD per worker task |
-| `SWARMTOOL_JUDGE_BUDGET` | `0.50` | Max USD per judge evaluation |
-| `SWARMTOOL_MERGE_BUDGET` | `0.50` | Max USD per merge resolution |
+| `SWARMTOOL_JUDGE_BUDGET` | `1.50` | Max USD per judge evaluation |
+| `SWARMTOOL_MERGE_BUDGET` | `1.50` | Max USD per merge resolution |
 | `SWARMTOOL_TOTAL_BUDGET` | `20.00` | Total budget cap per run |
 | `SWARMTOOL_MAX_WORKERS` | `0` (auto) | Max concurrent workers (0 = auto-detect) |
 | `SWARMTOOL_API_CONCURRENCY` | `5` | Max concurrent Claude API calls |
@@ -216,6 +241,76 @@ SWARMTOOL_MAX_WORKERS=5
 | `SWARMTOOL_RETRY_DELAY` | `10` | Initial retry delay in seconds (doubles each retry) |
 | `SWARMTOOL_AUTO_MERGE` | `true` | Attempt auto-merge before Claude resolution |
 | `SWARMTOOL_FINAL_VALIDATION` | `true` | Run validation after merge |
+
+## LLM Providers
+
+SwarmTool supports multiple LLM providers, allowing you to mix and match models for different roles.
+
+### Available providers
+
+| Provider | Description | Requirements |
+|----------|-------------|--------------|
+| `claude` | Claude via Claude Code CLI (default) | Claude Code installed and authenticated |
+| `openai` | OpenAI API (GPT-4o, etc.) | `OPENAI_API_KEY` environment variable |
+| `openrouter` | OpenRouter API (access to many models) | `OPENROUTER_API_KEY` environment variable |
+| `ollama` | Local LLMs via Ollama | Ollama running locally |
+| `lmstudio` | Local LLMs via LM Studio | LM Studio running locally |
+
+### Check available providers
+
+```bash
+swarmtool --providers
+```
+
+Output:
+```
+Available LLM Providers:
+
+  ● claude       available
+  ○ openai       unavailable (OPENAI_API_KEY not set)
+  ○ openrouter   unavailable (OPENROUTER_API_KEY not set)
+  ● ollama       available
+  ○ lmstudio     unavailable (LM Studio not running)
+```
+
+### Provider:model format
+
+Specify providers using `provider:model` format:
+
+```bash
+# Claude models
+--planner claude:opus
+--worker claude:sonnet
+
+# OpenAI models
+--judge openai:gpt-4o
+--judge openai:gpt-4-turbo
+
+# Ollama local models
+--worker ollama:qwen2
+--worker ollama:codellama
+--worker ollama:llama3:70b
+
+# OpenRouter models (access Claude, GPT, Llama, etc.)
+--planner openrouter:anthropic/claude-3-opus
+--worker openrouter:meta-llama/llama-3-70b-instruct
+```
+
+### Cost optimization
+
+Use cheaper local models for workers while keeping powerful models for planning and judging:
+
+```bash
+swarmtool "Build a REST API" \
+  --planner claude:opus \
+  --worker ollama:qwen2 \
+  --judge claude:opus
+```
+
+This gives you:
+- **Planner** (claude:opus) -- Best reasoning for task decomposition
+- **Workers** (ollama:qwen2) -- Free local execution for code generation
+- **Judge** (claude:opus) -- Reliable evaluation of results
 
 ### Auto-scaling
 

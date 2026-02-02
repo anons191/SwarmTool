@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kanban Board</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Sidebar -->
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-header">
+        <h1 class="sidebar-title">Kanban</h1>
+      </div>
+      <div id="board-list" class="board-list"></div>
+      <button id="new-board-btn" class="btn btn-primary">New Board</button>
+    </aside>
+
+    <!-- Main Content -->
+    <main id="main-content" class="main-content">
+      <div id="board-header" class="board-header">
+        <h2 id="board-title" class="board-title"></h2>
+        <div id="board-actions" class="board-actions">
+          <button id="add-column-btn" class="btn btn-secondary">Add Column</button>
+          <button id="delete-board-btn" class="btn btn-danger">Delete Board</button>
+        </div>
+      </div>
+      <div id="columns-container" class="columns-container"></div>
+      <div id="empty-state" class="empty-state hidden">
+        <div class="empty-state-icon">📋</div>
+        <div class="empty-state-text">No board selected. Create a new board to get started.</div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Input Modal -->
+  <div id="input-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="input-modal-title" class="modal-title"></h3>
+      </div>
+      <div class="modal-body">
+        <input type="text" id="input-modal-input" class="modal-input" placeholder="">
+      </div>
+      <div class="modal-footer">
+        <button id="input-modal-cancel" class="btn btn-secondary">Cancel</button>
+        <button id="input-modal-submit" class="btn btn-primary">Submit</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm Modal -->
+  <div id="confirm-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="confirm-modal-title" class="modal-title"></h3>
+      </div>
+      <div class="modal-body">
+        <p id="confirm-modal-message" class="modal-message"></p>
+      </div>
+      <div class="modal-footer">
+        <button id="confirm-modal-cancel" class="btn btn-secondary">Cancel</button>
+        <button id="confirm-modal-confirm" class="btn btn-danger">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Card Modal -->
+  <div id="card-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title">Edit Card</h3>
+        <button class="modal-close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Title</label>
+          <input type="text" id="card-modal-title" class="form-input" placeholder="Card title">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <textarea id="card-modal-description" class="form-textarea" placeholder="Card description" rows="4"></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Due Date</label>
+          <input type="date" id="card-modal-due-date" class="form-input">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Labels</label>
+          <div id="card-modal-labels" class="label-picker">
+            <div class="label-option card-label-red" data-color="red"></div>
+            <div class="label-option card-label-orange" data-color="orange"></div>
+            <div class="label-option card-label-yellow" data-color="yellow"></div>
+            <div class="label-option card-label-green" data-color="green"></div>
+            <div class="label-option card-label-blue" data-color="blue"></div>
+            <div class="label-option card-label-purple" data-color="purple"></div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="card-modal-delete" class="btn btn-danger">Delete</button>
+        <button id="card-modal-cancel" class="btn btn-secondary">Cancel</button>
+        <button id="card-modal-save" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toast-container"></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

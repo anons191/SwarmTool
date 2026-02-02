@@ -1,6 +1,10 @@
 # SwarmTool
 
-A Bash CLI that orchestrates multiple Claude Code agents to work on a goal in parallel. Built on the principle of **dumb workers, smart orchestration**.
+> **One goal. Five AI agents. One working app.**
+
+A Bash CLI that orchestrates multiple AI agents to build your project in parallel. Describe what you want, and SwarmTool's planner decomposes it into tasks, workers execute them simultaneously, and everything merges into working code.
+
+Built on the principle of **dumb workers, smart orchestration**.
 
 SwarmTool decomposes a high-level goal into isolated tasks, dispatches them to Claude Code subprocesses running in separate git worktrees, evaluates the results, and merges everything back together.
 
@@ -407,6 +411,30 @@ Each run creates state files in `.swarmtool/runs/<run-id>/`:
     merge.order      # Task merge order
     merge.status     # Merge phase status
   summary.md         # Final report
+```
+
+## Examples
+
+### Kanban Board
+
+The `examples/kanban-board/` directory contains a full-stack Kanban board built entirely by SwarmTool in a single run:
+
+```bash
+swarmtool "Build a Kanban board web app"
+```
+
+**Result:** 5 workers, 13 checks passed, ~2,000 lines of working code including:
+- Express backend with REST API
+- Drag-and-drop columns and cards
+- Custom modals and toast notifications
+- Labels, due dates, descriptions
+
+Try it:
+```bash
+cd examples/kanban-board
+npm install
+npm start
+# Open http://localhost:3000
 ```
 
 ## Design philosophy

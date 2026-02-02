@@ -104,7 +104,8 @@ determine_merge_order() {
 run_merge_phase() {
     local run_id="$1" run_dir="$2"
     local merge_dir="${run_dir}/merge"
-    local merge_log="${merge_dir}/merge.log"
+    # Use /tmp for merge log to avoid git conflicts (file is inside repo otherwise)
+    local merge_log="/tmp/swarmtool-merge-${run_id}.log"
 
     print_header "Merge"
 
@@ -112,12 +113,6 @@ run_merge_phase() {
     if type show_architecture_inline &>/dev/null; then
         show_architecture_inline "merging"
     fi
-
-    # Clean up any stale git state from previous runs
-    # This prevents "unmerged files" and stash conflicts
-    git merge --abort 2>/dev/null || true
-    git stash drop 2>/dev/null || true
-    git checkout -- . 2>/dev/null || true
 
     # Get base branch and commit
     local base_branch base_commit
@@ -154,8 +149,8 @@ run_merge_phase() {
     git checkout -b "$integration_branch" "$base_commit" >>"$merge_log" 2>&1 || {
         log_error "Failed to create integration branch"
         echo "failed" > "${merge_dir}/merge.status"
-        git checkout -- .swarmtool 2>/dev/null || true
         git checkout "$current_branch" 2>/dev/null
+        cp "$merge_log" "${merge_dir}/merge.log" 2>/dev/null || true
         return 1
     }
 
@@ -349,9 +344,6 @@ run_merge_phase() {
     fi
 
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
-        # Clean up any stale git state before final merge
-        git stash drop 2>/dev/null || true
-        git checkout -- . 2>/dev/null || true
         git checkout "$base_branch" >>"$merge_log" 2>&1
         if git merge --no-edit "$integration_branch" >>"$merge_log" 2>&1; then
             printf "${GREEN}Successfully merged into %s.${NC}\n" "$base_branch"
@@ -364,15 +356,16 @@ run_merge_phase() {
             printf "${RED}Failed to merge into %s.${NC}\n" "$base_branch"
             echo "failed" > "${merge_dir}/merge.status"
             git merge --abort 2>/dev/null
-            git checkout -- .swarmtool 2>/dev/null || true
             git checkout "$base_branch" 2>/dev/null
             log "$run_id" "MERGE" "FAILED to merge into ${base_branch}"
         fi
     else
         printf "Integration branch preserved: ${BOLD}%s${NC}\n" "$integration_branch"
         printf "Merge manually with: git merge %s\n" "$integration_branch"
-        git checkout -- .swarmtool 2>/dev/null || true
         git checkout "$base_branch" >>"$merge_log" 2>&1
         echo "preserved" > "${merge_dir}/merge.status"
     fi
+
+    # Copy merge log from /tmp back to run directory for record-keeping
+    cp "$merge_log" "${merge_dir}/merge.log" 2>/dev/null || true
 }

@@ -86,7 +86,7 @@ run_planning_phase() {
     raw_output=$(invoke_llm "$planner_spec" "$planner_prompt" \
         --system-prompt "$system_prompt" \
         --output-format json \
-        --allowed-tools "Read,Glob,Grep,Bash(find:*),Bash(git\ log:*),Bash(git\ diff:*),Bash(ls:*),Bash(wc:*)" \
+        --allowed-tools "Read,Glob,Grep,Bash" \
         --max-turns 30 \
         2>"$planner_log") || {
         # Stop spinner on failure

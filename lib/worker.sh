@@ -75,6 +75,88 @@ ${log_tail:-"no log available"}
 EOF
 }
 
+# ── Contract Validation ────────────────────────────────────────────────────
+
+# Validate worker output against interface registry (contract check)
+# This catches contract violations BEFORE the judge phase
+# Usage: validate_worker_contract <worktree> <run_dir> <task_id>
+# Returns: 0 if valid, 1 if contract violations found
+validate_worker_contract() {
+    local worktree="$1"
+    local run_dir="$2"
+    local task_id="$3"
+
+    local registry_file="${run_dir}/interfaces.json"
+
+    # Skip if no registry (non-frontend project)
+    [[ ! -f "$registry_file" ]] && return 0
+
+    local violations=""
+    local notes_file="${run_dir}/tasks/${task_id}.notes"
+
+    # Get registry HTML IDs
+    local registry_ids
+    registry_ids=$(jq -r '.html_ids // [] | .[]' "$registry_file" 2>/dev/null | tr '\n' ' ')
+
+    # Check HTML files for invalid IDs (IDs not in registry)
+    local html_files
+    html_files=$(find "$worktree" -name "*.html" -type f 2>/dev/null)
+
+    for html_file in $html_files; do
+        [[ ! -f "$html_file" ]] && continue
+
+        # Extract all id="..." values from HTML
+        local html_ids
+        html_ids=$(grep -oE 'id="[^"]+"' "$html_file" 2>/dev/null | sed 's/id="//;s/"$//' || true)
+
+        for html_id in $html_ids; do
+            [[ -z "$html_id" ]] && continue
+
+            # Check if this ID is in the registry
+            if ! echo " $registry_ids " | grep -q " $html_id "; then
+                violations="${violations}REGISTRY_MISMATCH: HTML has id='${html_id}' but '${html_id}' not in interface registry\n"
+            fi
+        done
+    done
+
+    # Check JS files for getElementById calls to IDs not in registry
+    local js_files
+    js_files=$(find "$worktree" -name "*.js" -type f 2>/dev/null)
+
+    for js_file in $js_files; do
+        [[ ! -f "$js_file" ]] && continue
+
+        # Extract getElementById('...') and getElementById("...") calls
+        local js_ids
+        js_ids=$(grep -oE "getElementById\(['\"][^'\"]+['\"]\)" "$js_file" 2>/dev/null | sed "s/getElementById(['\"]//;s/['\"])$//" || true)
+
+        for js_id in $js_ids; do
+            [[ -z "$js_id" ]] && continue
+
+            # Check if this ID is in the registry
+            if ! echo " $registry_ids " | grep -q " $js_id "; then
+                violations="${violations}REGISTRY_MISMATCH: JS getElementById('${js_id}') references ID not in interface registry\n"
+            fi
+        done
+    done
+
+    # If violations found, write to notes and return failure
+    if [[ -n "$violations" ]]; then
+        {
+            echo ""
+            echo "## CONTRACT VIOLATIONS (detected before judge phase)"
+            echo -e "$violations"
+            echo ""
+            echo "## Valid HTML IDs from Interface Registry"
+            echo "$registry_ids"
+        } >> "$notes_file"
+
+        return 1
+    fi
+
+    return 0
+}
+
 # ── Git Lock for Thread Safety ─────────────────────────────────────────────
 
 # Acquire a lock for git operations (prevents race conditions)
@@ -299,16 +381,30 @@ launch_worker() {
                     2>>"${ORIGINAL_PWD}/${log_file}" || true
             )
             release_git_lock
-            set_task_status "$run_dir" "$task_id" "done"
-            log "$run_id" "WORKER" "Task ${task_id} completed with changes"
-            # Write notes for planner (used on retry if task fails judging)
-            write_worker_notes "$run_dir" "$task_id" "$abs_worktree" "$log_file" "done"
+
+            # Validate worker output against interface registry (early contract check)
+            if validate_worker_contract "$abs_worktree" "$run_dir" "$task_id"; then
+                set_task_status "$run_dir" "$task_id" "done"
+                log "$run_id" "WORKER" "Task ${task_id} completed with changes"
+                write_worker_notes "$run_dir" "$task_id" "$abs_worktree" "$log_file" "done"
+            else
+                set_task_status "$run_dir" "$task_id" "failed"
+                log "$run_id" "WORKER" "Task ${task_id} FAILED contract validation"
+                write_worker_notes "$run_dir" "$task_id" "$abs_worktree" "$log_file" "failed"
+            fi
         else
             release_git_lock
-            set_task_status "$run_dir" "$task_id" "done"
-            log "$run_id" "WORKER" "Task ${task_id} completed (no file changes)"
-            # Write notes for planner (used on retry if task fails judging)
-            write_worker_notes "$run_dir" "$task_id" "$abs_worktree" "$log_file" "done"
+
+            # Validate even when no file changes (in case of existing files)
+            if validate_worker_contract "$abs_worktree" "$run_dir" "$task_id"; then
+                set_task_status "$run_dir" "$task_id" "done"
+                log "$run_id" "WORKER" "Task ${task_id} completed (no file changes)"
+                write_worker_notes "$run_dir" "$task_id" "$abs_worktree" "$log_file" "done"
+            else
+                set_task_status "$run_dir" "$task_id" "failed"
+                log "$run_id" "WORKER" "Task ${task_id} FAILED contract validation (no changes)"
+                write_worker_notes "$run_dir" "$task_id" "$abs_worktree" "$log_file" "failed"
+            fi
         fi
     else
         # Check retry count

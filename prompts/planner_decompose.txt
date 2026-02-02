@@ -99,3 +99,38 @@ And these in css_classes:
 - "hidden", "loading"
 
 If you don't include these quality requirements in EVERY frontend task, workers WILL use browser dialogs and skip error handling. Be explicit.
+
+EXPLICIT CHECKLIST FOR HTML TASKS (CRITICAL):
+
+When creating an HTML task, the task description MUST include an explicit checklist of ALL html_ids:
+
+```
+## REQUIRED HTML IDs (you MUST create ALL of these):
+- [ ] app-container
+- [ ] sidebar
+- [ ] main-content
+- [ ] toast-container
+- [ ] input-modal
+- [ ] input-modal-title
+- [ ] input-modal-input
+- [ ] input-modal-submit
+- [ ] input-modal-cancel
+- [ ] confirm-modal
+- [ ] confirm-modal-title
+- [ ] confirm-modal-message
+- [ ] confirm-modal-confirm
+- [ ] confirm-modal-cancel
+[... list EVERY ID from your interface_registry.html_ids ...]
+
+VERIFICATION: Before finishing, count your IDs. If the registry has 18 IDs, your HTML must have 18 elements with those exact IDs.
+```
+
+This checklist format:
+1. Prevents workers from creating "simple placeholder" HTML
+2. Makes requirements impossible to miss
+3. Gives workers a verification step
+4. Catches missing elements before the judging phase
+
+The HTML task's success_criteria should also require:
+- "HTML file contains elements with ALL IDs from the checklist above"
+- "No IDs exist that are NOT in the interface registry"

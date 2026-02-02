@@ -157,6 +157,96 @@ wait_for_task_completion() {
     return 1
 }
 
+# ── Contract Violation Extraction ──────────────────────────────────────────
+
+# Extract specific contract violations from judge feedback and worker notes
+# Returns formatted violations with registry reference for new worker
+# Usage: extract_contract_violations <feedback> <notes> <run_dir>
+extract_contract_violations() {
+    local feedback="$1"
+    local notes="$2"
+    local run_dir="$3"
+
+    local violations=""
+    local combined_text="${feedback}
+${notes}"
+
+    # Extract REGISTRY_MISMATCH patterns
+    local registry_mismatches
+    registry_mismatches=$(echo "$combined_text" | grep -oE "REGISTRY_MISMATCH:[^$]*" | head -20 || true)
+
+    # Extract DOM_MISMATCH patterns
+    local dom_mismatches
+    dom_mismatches=$(echo "$combined_text" | grep -oE "DOM_MISMATCH:[^$]*" | head -20 || true)
+
+    # Extract specific IDs mentioned in getElementById calls
+    local missing_ids
+    missing_ids=$(echo "$combined_text" | grep -oE "getElementById\(['\"][^'\"]+['\"]\)" | sed "s/getElementById(['\"]//;s/['\"])$//" | sort -u | tr '\n' ', ')
+
+    # Extract IDs that HTML created but shouldn't have
+    local invalid_ids
+    invalid_ids=$(echo "$combined_text" | grep -oE "HTML has id='[^']+'" | sed "s/HTML has id='//;s/'$//" | sort -u | tr '\n' ', ')
+
+    # Get the interface registry for reference
+    local registry_file="${run_dir}/interfaces.json"
+    local valid_ids=""
+    local valid_classes=""
+    if [[ -f "$registry_file" ]]; then
+        valid_ids=$(jq -r '.html_ids // [] | join(", ")' "$registry_file" 2>/dev/null || echo "")
+        valid_classes=$(jq -r '.css_classes // [] | join(", ")' "$registry_file" 2>/dev/null || echo "")
+    fi
+
+    # Build the violations report
+    if [[ -n "$registry_mismatches" || -n "$dom_mismatches" || -n "$missing_ids" || -n "$invalid_ids" ]]; then
+        violations="### CONTRACT VIOLATIONS FROM PREVIOUS ATTEMPT
+
+**These specific issues MUST be fixed:**
+
+"
+        if [[ -n "$registry_mismatches" ]]; then
+            violations="${violations}**Registry Mismatches:**
+\`\`\`
+${registry_mismatches}
+\`\`\`
+
+"
+        fi
+
+        if [[ -n "$dom_mismatches" ]]; then
+            violations="${violations}**DOM Mismatches (JS references HTML that doesn't exist):**
+\`\`\`
+${dom_mismatches}
+\`\`\`
+
+"
+        fi
+
+        if [[ -n "$invalid_ids" ]]; then
+            violations="${violations}**Invalid IDs created (NOT in registry - remove these):** ${invalid_ids}
+
+"
+        fi
+
+        if [[ -n "$missing_ids" ]]; then
+            violations="${violations}**Missing IDs referenced (must exist in HTML):** ${missing_ids}
+
+"
+        fi
+
+        violations="${violations}### VALID IDENTIFIERS (USE ONLY THESE)
+
+**HTML IDs (create elements with these exact IDs):**
+${valid_ids:-"(no registry found)"}
+
+**CSS Classes (use these exact class names):**
+${valid_classes:-"(no registry found)"}
+
+**CRITICAL**: Every ID in html_ids MUST exist in HTML. No other IDs allowed."
+    fi
+
+    echo "$violations"
+}
+
 # ── Planner Improvement ─────────────────────────────────────────────────────
 
 # Planner improves task spec based on judge feedback + worker notes
@@ -180,6 +270,10 @@ improve_task_spec_via_planner() {
     local current_desc
     current_desc=$(taskspec_get_block "$spec_file" "TASK_DESCRIPTION")
 
+    # Extract specific contract violations for targeted fix instructions
+    local contract_violations
+    contract_violations=$(extract_contract_violations "$judge_feedback" "$worker_notes" "$run_dir")
+
     # Build enhanced description with retry guidance
     # The key: we give the new worker IMPROVED INSTRUCTIONS, not raw notes
     local enhanced_desc="${current_desc}
@@ -191,8 +285,7 @@ The previous attempt failed. Here's what went wrong and how to fix it:
 ### Judge Feedback
 ${judge_feedback:-"No specific feedback available"}
 
-### What the Previous Attempt Tried
-${worker_notes:-"No notes available from previous attempt"}
+${contract_violations}
 
 ### CRITICAL Instructions for This Attempt
 1. **Interface Registry Compliance**: Ensure ALL HTML IDs and CSS classes match the interface registry EXACTLY
@@ -203,8 +296,7 @@ ${worker_notes:-"No notes available from previous attempt"}
    - Verify it's in the interface registry
    - Use the exact spelling/casing from the registry
 
-3. **Address the Specific Failures**: The judge found these issues - fix them:
-   ${judge_feedback:-"Review the issues above"}
+3. **Address the Specific Failures Above**: The judge found specific issues - fix them exactly
 
 4. **Read Existing Files First**: Before modifying, read the current state of any files that might have been changed"
 

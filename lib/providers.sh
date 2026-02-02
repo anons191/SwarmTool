@@ -212,7 +212,8 @@ invoke_claude() {
     [[ -n "$system_prompt" ]] && claude_args+=(--system-prompt "$system_prompt")
     [[ -n "$output_format" ]] && claude_args+=(--output-format "$output_format")
     [[ -n "$allowed_tools" ]] && claude_args+=(--allowedTools "$allowed_tools")
-    [[ -n "$max_turns" ]] && claude_args+=(--max-turns "$max_turns")
+    # Note: --max-turns is not a valid Claude CLI flag; we ignore it for now
+    # Could use --max-budget-usd as an alternative limiter
 
     # Execute in working directory if specified
     if [[ -n "$working_dir" ]]; then

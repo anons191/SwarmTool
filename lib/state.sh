@@ -7,14 +7,18 @@ _SWARMTOOL_STATE_LOADED=1
 
 # ── Valid States ────────────────────────────────────────────────────────────
 # Run states:
-#   initialized -> planning -> approved -> executing -> judging -> merging -> complete
+#   initialized -> [interviewing] -> planning -> approved -> executing -> judging -> merging -> complete
 #   Any state can transition to -> failed
+#   Interview phase is optional (initialized can go directly to planning)
 
-VALID_RUN_STATES="initialized planning approved executing judging merging complete failed"
+VALID_RUN_STATES="initialized interviewing planning approved executing judging merging complete failed"
 
 # Valid state transitions (from:to)
 VALID_TRANSITIONS="
+initialized:interviewing
 initialized:planning
+interviewing:planning
+interviewing:failed
 planning:approved
 planning:failed
 approved:executing

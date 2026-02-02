@@ -52,8 +52,18 @@ run_planning_phase() {
     local goal="$3"
 
     log "$run_id" "PLANNER" "Decomposing goal: $goal"
-    printf "${BOLD}Planning...${NC} Analyzing codebase and decomposing goal.\n"
-    echo ""
+
+    # Show architecture diagram if available
+    if type show_architecture_inline &>/dev/null; then
+        show_architecture_inline "planning"
+    fi
+
+    # Start spinner for planning phase
+    if type spinner_start &>/dev/null; then
+        spinner_start "${BOLD}Planning...${NC} Analyzing codebase and decomposing goal"
+    else
+        printf "${BOLD}Planning...${NC} Analyzing codebase and decomposing goal.\n"
+    fi
 
     # Build the planner prompt (includes requirements.md if it exists from interview)
     local planner_prompt
@@ -79,11 +89,17 @@ run_planning_phase() {
         --allowed-tools "Read,Glob,Grep,Bash(find:*),Bash(git\ log:*),Bash(git\ diff:*),Bash(ls:*),Bash(wc:*)" \
         --max-turns 30 \
         2>"$planner_log") || {
+        # Stop spinner on failure
+        type spinner_stop &>/dev/null && spinner_stop
         log "$run_id" "PLANNER" "Planner invocation failed"
         log_error "Planner failed. See ${planner_log} for details."
         set_run_state "$run_dir" "failed"
         return 1
     }
+
+    # Stop spinner after planning completes
+    type spinner_stop &>/dev/null && spinner_stop
+    echo ""
 
     # Parse the planner output
     # Claude's --output-format json wraps the response; extract the result

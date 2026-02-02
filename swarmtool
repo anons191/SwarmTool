@@ -29,6 +29,7 @@ source "${SWARMTOOL_DIR}/lib/cleanup.sh"
 [[ -f "${SWARMTOOL_DIR}/lib/conventions.sh" ]]  && source "${SWARMTOOL_DIR}/lib/conventions.sh"
 [[ -f "${SWARMTOOL_DIR}/lib/fix.sh" ]]          && source "${SWARMTOOL_DIR}/lib/fix.sh"
 [[ -f "${SWARMTOOL_DIR}/lib/interview.sh" ]]    && source "${SWARMTOOL_DIR}/lib/interview.sh"
+[[ -f "${SWARMTOOL_DIR}/lib/display.sh" ]]      && source "${SWARMTOOL_DIR}/lib/display.sh"
 
 # ── CLI Argument Parsing ────────────────────────────────────────────────────
 GOAL=""
@@ -238,7 +239,12 @@ fi
 
 # ── Interactive Mode ────────────────────────────────────────────────────────
 
-print_header "swarmtool v${SWARMTOOL_VERSION}"
+# Show startup banner
+if type show_banner &>/dev/null; then
+    show_banner
+else
+    print_header "swarmtool v${SWARMTOOL_VERSION}"
+fi
 
 # Step 1: Capture goal
 if [[ -z "$GOAL" ]]; then
@@ -384,8 +390,43 @@ log "$RUN_ID" "MAIN" "Run complete"
 
 # Summary
 echo ""
-print_header "Run Complete"
-display_progress "$RUN_DIR"
+
+# Calculate stats for completion summary
+pass_count=0
+fail_count=0
+total_count=0
+for status_file in "${RUN_DIR}/tasks/"*.judge; do
+    [[ -f "$status_file" ]] || continue
+    ((total_count++))
+    verdict=$(grep "^VERDICT=" "$status_file" 2>/dev/null | cut -d'=' -f2-)
+    [[ "$verdict" == "pass" ]] && ((pass_count++))
+    [[ "$verdict" == "fail" ]] && ((fail_count++))
+done
+
+# Calculate duration
+start_time_str=$(get_run_meta "$RUN_DIR" "START_TIME")
+if [[ -n "$start_time_str" ]]; then
+    # Parse ISO timestamp to seconds (macOS/BSD compatible)
+    if date -j -f "%Y-%m-%dT%H:%M:%SZ" "$start_time_str" +%s >/dev/null 2>&1; then
+        start_epoch=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$start_time_str" +%s)
+    else
+        # GNU date fallback
+        start_epoch=$(date -d "$start_time_str" +%s 2>/dev/null || echo 0)
+    fi
+    end_epoch=$(date +%s)
+    duration=$((end_epoch - start_epoch))
+else
+    duration=0
+fi
+
+# Show fancy or simple completion
+if type show_completion_summary &>/dev/null; then
+    show_completion_summary "$RUN_ID" "$duration" "$pass_count" "$fail_count" "$total_count"
+else
+    print_header "Run Complete"
+    display_progress "$RUN_DIR"
+fi
+
 echo ""
 echo "Run ID: ${RUN_ID}"
 echo "Logs:   ${RUN_DIR}/run.log"

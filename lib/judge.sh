@@ -468,6 +468,11 @@ run_judging_phase() {
 
     print_header "Judging"
 
+    # Show architecture diagram if available
+    if type show_architecture_inline &>/dev/null; then
+        show_architecture_inline "judging"
+    fi
+
     local done_tasks=()
     while IFS= read -r tid; do
         [[ -n "$tid" ]] && done_tasks+=("$tid")
@@ -478,9 +483,18 @@ run_judging_phase() {
         return 0
     fi
 
-    printf "Evaluating ${BOLD}%d${NC} completed tasks...\n\n" "${#done_tasks[@]}"
+    local total_tasks=${#done_tasks[@]}
+    local current_task=0
+
+    printf "Evaluating ${BOLD}%d${NC} completed tasks...\n\n" "$total_tasks"
 
     for task_id in "${done_tasks[@]}"; do
+        ((current_task++))
+
+        # Show progress bar
+        if type show_phase_progress &>/dev/null; then
+            show_phase_progress "Judging" "$current_task" "$total_tasks" "evaluating $task_id"
+        fi
         # Skip if already judged
         if [[ -f "${run_dir}/tasks/${task_id}.judge" ]]; then
             continue

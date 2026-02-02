@@ -299,6 +299,12 @@ run_execution_phase() {
     max_workers=$(detect_max_workers "$task_count")
 
     log "$run_id" "EXEC" "Starting execution: ${task_count} tasks, max ${max_workers} workers"
+
+    # Show architecture diagram if available
+    if type show_architecture_inline &>/dev/null; then
+        show_architecture_inline "executing"
+    fi
+
     echo ""
     printf "${BOLD}Executing with %d max concurrent workers${NC}\n" "$max_workers"
     echo ""
@@ -306,6 +312,10 @@ run_execution_phase() {
     # Track active workers: arrays of PIDs and their task IDs
     local active_pids=()
     local active_tasks=()
+
+    # Track elapsed time for dashboard
+    local start_time
+    start_time=$(date +%s)
 
     while true; do
         # Check if shutdown was requested
@@ -412,11 +422,25 @@ run_execution_phase() {
         # Poll interval
         sleep 2
 
-        # Show progress periodically
-        display_progress "$run_dir"
+        # Show progress periodically using dashboard if available
+        local elapsed=$(( $(date +%s) - start_time ))
+        if type draw_dashboard &>/dev/null && [[ "${USE_FANCY_DISPLAY:-true}" == "true" ]]; then
+            # Move cursor up to redraw dashboard in place
+            cursor_up 15 2>/dev/null || true
+            clear_to_end 2>/dev/null || true
+            draw_dashboard "$run_dir" "$elapsed"
+        else
+            display_progress "$run_dir"
+        fi
     done
 
     echo ""
-    display_progress "$run_dir"
+    # Final progress display
+    local elapsed=$(( $(date +%s) - start_time ))
+    if type draw_dashboard &>/dev/null && [[ "${USE_FANCY_DISPLAY:-true}" == "true" ]]; then
+        draw_dashboard "$run_dir" "$elapsed"
+    else
+        display_progress "$run_dir"
+    fi
     echo ""
 }

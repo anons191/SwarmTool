@@ -108,6 +108,11 @@ run_merge_phase() {
 
     print_header "Merge"
 
+    # Show architecture diagram if available
+    if type show_architecture_inline &>/dev/null; then
+        show_architecture_inline "merging"
+    fi
+
     # Get base branch and commit
     local base_branch base_commit
     base_branch=$(get_run_meta "$run_dir" "BASE_BRANCH")
@@ -129,7 +134,10 @@ run_merge_phase() {
         return 0
     fi
 
-    printf "Merging ${BOLD}%d${NC} task branches...\n\n" "${#merge_tasks[@]}"
+    local total_tasks=${#merge_tasks[@]}
+    local current_task=0
+
+    printf "Merging ${BOLD}%d${NC} task branches...\n\n" "$total_tasks"
     echo "in_progress" > "${merge_dir}/merge.status"
 
     # Stash current state and create integration branch
@@ -151,6 +159,13 @@ run_merge_phase() {
     local success_count=0
 
     for task_id in "${merge_tasks[@]}"; do
+        ((current_task++))
+
+        # Show progress bar
+        if type show_phase_progress &>/dev/null; then
+            show_phase_progress "Merging" "$current_task" "$total_tasks" "merging $task_id"
+        fi
+
         local spec_file="${run_dir}/tasks/${task_id}.spec"
         local task_branch
         task_branch=$(taskspec_get "$spec_file" "TASK_BRANCH")

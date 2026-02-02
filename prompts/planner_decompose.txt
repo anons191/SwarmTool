@@ -2,6 +2,8 @@
 
 {{GOAL}}
 
+{{REQUIREMENTS}}
+
 # Instructions
 
 1. Explore the codebase to understand its structure, patterns, and conventions.

@@ -55,9 +55,9 @@ run_planning_phase() {
     printf "${BOLD}Planning...${NC} Analyzing codebase and decomposing goal.\n"
     echo ""
 
-    # Build the planner prompt
+    # Build the planner prompt (includes requirements.md if it exists from interview)
     local planner_prompt
-    planner_prompt=$(build_planner_prompt "$goal")
+    planner_prompt=$(build_planner_prompt "$goal" "$run_dir")
 
     # Load system prompt
     local system_prompt=""

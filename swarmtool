@@ -28,6 +28,7 @@ source "${SWARMTOOL_DIR}/lib/cleanup.sh"
 [[ -f "${SWARMTOOL_DIR}/lib/resume.sh" ]]       && source "${SWARMTOOL_DIR}/lib/resume.sh"
 [[ -f "${SWARMTOOL_DIR}/lib/conventions.sh" ]]  && source "${SWARMTOOL_DIR}/lib/conventions.sh"
 [[ -f "${SWARMTOOL_DIR}/lib/fix.sh" ]]          && source "${SWARMTOOL_DIR}/lib/fix.sh"
+[[ -f "${SWARMTOOL_DIR}/lib/interview.sh" ]]    && source "${SWARMTOOL_DIR}/lib/interview.sh"
 
 # ── CLI Argument Parsing ────────────────────────────────────────────────────
 GOAL=""
@@ -39,6 +40,7 @@ SHOW_PROVIDERS=false
 LIST_RUNS=false
 FIX_MODE=false
 FIX_DIR="."
+INTERVIEW_MODE=""  # empty = prompt user, "true" = force interview, "false" = skip
 
 usage() {
     cat <<EOF
@@ -71,6 +73,10 @@ ${BOLD}OPTIONS${NC}
     --worker-model <m>    Model for workers (e.g., sonnet)
     --judge-model <m>     Model for judge (e.g., opus)
 
+    ${BOLD}Interview Options${NC}
+    --interview           Force interview phase to gather requirements
+    --no-interview        Skip interview prompt, go straight to planning
+
     --budget <usd>        Total budget cap in USD (default: 20.00)
     --dry-run             Show plan without executing
     --auto-approve, -y    Auto-approve all steps after plan approval
@@ -81,6 +87,7 @@ ${BOLD}OPTIONS${NC}
 
 ${BOLD}EXAMPLES${NC}
     swarmtool "Add user authentication with JWT"
+    swarmtool --interview "Add authentication"   # Interview first, then plan
     swarmtool --goal "Refactor the database layer" --max-workers 3
     swarmtool --worker ollama:qwen2 --judge openai:gpt-4o "Build a todo app"
     swarmtool --resume abc12345
@@ -154,6 +161,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --providers)
             SHOW_PROVIDERS=true
+            shift
+            ;;
+        --interview)
+            INTERVIEW_MODE=true
+            shift
+            ;;
+        --no-interview)
+            INTERVIEW_MODE=false
             shift
             ;;
         --max-workers|--planner|--worker|--judge|--fixer|--merger|--planner-model|--worker-model|--judge-model|--budget|--state-dir)
@@ -258,6 +273,33 @@ fi
 if [[ "$VERBOSE" == "true" ]]; then
     dump_config
     display_resources
+fi
+
+# Step 2b: Interview phase (optional)
+if type run_interview_phase &>/dev/null; then
+    do_interview=false
+
+    if [[ "$INTERVIEW_MODE" == "true" ]]; then
+        # Forced via --interview flag
+        do_interview=true
+    elif [[ "$INTERVIEW_MODE" == "false" ]]; then
+        # Skipped via --no-interview flag
+        do_interview=false
+    else
+        # Prompt user
+        printf "Would you like me to ask clarifying questions first? [y/N] "
+        read -r interview_reply
+        if [[ "$interview_reply" =~ ^[Yy]$ ]]; then
+            do_interview=true
+        fi
+        echo ""
+    fi
+
+    if [[ "$do_interview" == "true" ]]; then
+        log "$RUN_ID" "MAIN" "Starting interview phase"
+        set_run_state "$RUN_DIR" "interviewing"
+        run_interview_phase "$RUN_ID" "$RUN_DIR" "$GOAL"
+    fi
 fi
 
 # Step 3: Planning phase

@@ -127,22 +127,44 @@ PROMPT
 # ── Planner Prompt Construction ─────────────────────────────────────────────
 
 # Build the planner decomposition prompt
-# Usage: build_planner_prompt <goal>
+# Usage: build_planner_prompt <goal> [run_dir]
 build_planner_prompt() {
     local goal="$1"
+    local run_dir="${2:-}"
+
+    # Check for requirements.md from interview phase
+    local requirements=""
+    local requirements_file="${run_dir}/requirements.md"
+    if [[ -n "$run_dir" && -f "$requirements_file" ]]; then
+        requirements="# Requirements (from interview phase)
+
+$(cat "$requirements_file")"
+    fi
 
     local template_file="${SWARMTOOL_DIR}/prompts/planner_decompose.txt"
 
     if [[ -f "$template_file" ]]; then
-        render_template "$template_file" "GOAL=${goal}"
+        render_template "$template_file" \
+            "GOAL=${goal}" \
+            "REQUIREMENTS=${requirements}"
     else
-        cat <<PROMPT
-# Goal
-${goal}
+        # Fallback: inline prompt construction
+        local prompt="# Goal
+${goal}"
+
+        if [[ -n "$requirements" ]]; then
+            prompt="${prompt}
+
+# Requirements (from interview)
+${requirements}"
+        fi
+
+        prompt="${prompt}
 
 Analyze the codebase and decompose this goal into independent, parallelizable tasks.
-Each task should be completable by a single agent working in isolation.
-PROMPT
+Each task should be completable by a single agent working in isolation."
+
+        printf '%s' "$prompt"
     fi
 }
 

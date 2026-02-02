@@ -9,11 +9,20 @@ _SWARMTOOL_CONFIG_LOADED=1
 # ── Default Values ──────────────────────────────────────────────────────────
 # These are overridden by config files, env vars, and CLI flags (in that order).
 
-# Models
-: "${SWARMTOOL_PLANNER_MODEL:=opus}"
-: "${SWARMTOOL_WORKER_MODEL:=sonnet}"
-: "${SWARMTOOL_JUDGE_MODEL:=sonnet}"
-: "${SWARMTOOL_MERGE_MODEL:=sonnet}"
+# Provider:Model specs (format: provider:model or just model for Claude)
+# Examples: "claude:opus", "openai:gpt-4o", "ollama:qwen2", "opus"
+: "${SWARMTOOL_PLANNER:=claude:opus}"
+: "${SWARMTOOL_WORKER:=claude:sonnet}"
+: "${SWARMTOOL_JUDGE:=claude:opus}"
+: "${SWARMTOOL_FIXER:=claude:opus}"
+: "${SWARMTOOL_MERGER:=claude:opus}"
+
+# Legacy model-only variables (for backwards compatibility)
+# These are derived from the new format or can override it
+: "${SWARMTOOL_PLANNER_MODEL:=}"
+: "${SWARMTOOL_WORKER_MODEL:=}"
+: "${SWARMTOOL_JUDGE_MODEL:=}"
+: "${SWARMTOOL_MERGE_MODEL:=}"
 
 # Budget (USD)
 : "${SWARMTOOL_PLANNER_BUDGET:=2.00}"
@@ -90,6 +99,23 @@ apply_cli_overrides() {
         --max-workers)
             SWARMTOOL_MAX_WORKERS="$value"
             ;;
+        # New provider:model flags
+        --planner)
+            SWARMTOOL_PLANNER="$value"
+            ;;
+        --worker)
+            SWARMTOOL_WORKER="$value"
+            ;;
+        --judge)
+            SWARMTOOL_JUDGE="$value"
+            ;;
+        --fixer)
+            SWARMTOOL_FIXER="$value"
+            ;;
+        --merger)
+            SWARMTOOL_MERGER="$value"
+            ;;
+        # Legacy model-only flags (for backwards compatibility)
         --planner-model)
             SWARMTOOL_PLANNER_MODEL="$value"
             ;;
@@ -108,13 +134,61 @@ apply_cli_overrides() {
     esac
 }
 
+# ── Provider Resolution ────────────────────────────────────────────────────
+
+# Resolve provider spec for a role, handling backwards compatibility
+# Usage: resolve_provider_spec <role>
+# Returns: provider:model string
+resolve_provider_spec() {
+    local role="$1"
+    local spec=""
+    local legacy_model=""
+
+    case "$role" in
+        planner)
+            spec="${SWARMTOOL_PLANNER:-}"
+            legacy_model="${SWARMTOOL_PLANNER_MODEL:-}"
+            ;;
+        worker)
+            spec="${SWARMTOOL_WORKER:-}"
+            legacy_model="${SWARMTOOL_WORKER_MODEL:-}"
+            ;;
+        judge)
+            spec="${SWARMTOOL_JUDGE:-}"
+            legacy_model="${SWARMTOOL_JUDGE_MODEL:-}"
+            ;;
+        fixer)
+            spec="${SWARMTOOL_FIXER:-}"
+            legacy_model="${SWARMTOOL_MERGE_MODEL:-}"  # Fixer uses merge model in legacy
+            ;;
+        merger)
+            spec="${SWARMTOOL_MERGER:-}"
+            legacy_model="${SWARMTOOL_MERGE_MODEL:-}"
+            ;;
+        *)
+            echo "claude:sonnet"
+            return
+            ;;
+    esac
+
+    # If legacy model is set, it overrides for Claude provider
+    if [[ -n "$legacy_model" ]]; then
+        echo "claude:${legacy_model}"
+        return
+    fi
+
+    # Return the spec (default to claude:sonnet if empty)
+    echo "${spec:-claude:sonnet}"
+}
+
 # Print current configuration (for debugging)
 dump_config() {
     print_section "Configuration"
-    echo "  Planner model:    $SWARMTOOL_PLANNER_MODEL"
-    echo "  Worker model:     $SWARMTOOL_WORKER_MODEL"
-    echo "  Judge model:      $SWARMTOOL_JUDGE_MODEL"
-    echo "  Merge model:      $SWARMTOOL_MERGE_MODEL"
+    echo "  Planner:          $(resolve_provider_spec planner)"
+    echo "  Worker:           $(resolve_provider_spec worker)"
+    echo "  Judge:            $(resolve_provider_spec judge)"
+    echo "  Fixer:            $(resolve_provider_spec fixer)"
+    echo "  Merger:           $(resolve_provider_spec merger)"
     echo "  Planner budget:   \$$SWARMTOOL_PLANNER_BUDGET"
     echo "  Worker budget:    \$$SWARMTOOL_WORKER_BUDGET"
     echo "  Judge budget:     \$$SWARMTOOL_JUDGE_BUDGET"

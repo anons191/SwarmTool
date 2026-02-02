@@ -64,26 +64,22 @@ run_planning_phase() {
     local system_prompt_file="${SWARMTOOL_DIR}/prompts/planner_system.txt"
     [[ -f "$system_prompt_file" ]] && system_prompt=$(cat "$system_prompt_file")
 
-    local planner_model="${SWARMTOOL_PLANNER_MODEL:-opus}"
+    # Get provider:model spec for planner
+    local planner_spec
+    planner_spec=$(resolve_provider_spec planner)
     local planner_budget="${SWARMTOOL_PLANNER_BUDGET:-2.00}"
 
-    # Invoke Claude Code as planner
+    # Invoke LLM as planner
     local raw_output=""
     local planner_log="${run_dir}/planner.log"
 
-    local claude_args=(-p)
-    claude_args+=(--model "$planner_model")
-
-    if [[ -n "$system_prompt" ]]; then
-        claude_args+=(--system-prompt "$system_prompt")
-    fi
-
-    claude_args+=(--output-format json)
-    claude_args+=(--allowedTools "Read,Glob,Grep,Bash(find:*),Bash(git\ log:*),Bash(git\ diff:*),Bash(ls:*),Bash(wc:*)")
-    claude_args+=(--max-turns 30)
-
-    raw_output=$(claude "${claude_args[@]}" "$planner_prompt" 2>"$planner_log") || {
-        log "$run_id" "PLANNER" "Claude Code planner invocation failed"
+    raw_output=$(invoke_llm "$planner_spec" "$planner_prompt" \
+        --system-prompt "$system_prompt" \
+        --output-format json \
+        --allowed-tools "Read,Glob,Grep,Bash(find:*),Bash(git\ log:*),Bash(git\ diff:*),Bash(ls:*),Bash(wc:*)" \
+        --max-turns 30 \
+        2>"$planner_log") || {
+        log "$run_id" "PLANNER" "Planner invocation failed"
         log_error "Planner failed. See ${planner_log} for details."
         set_run_state "$run_dir" "failed"
         return 1

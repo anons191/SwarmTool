@@ -8,7 +8,6 @@ _SWARMTOOL_FIX_LOADED=1
 
 # ── Configuration ───────────────────────────────────────────────────────────
 
-SWARMTOOL_FIX_MODEL="${SWARMTOOL_FIX_MODEL:-sonnet}"
 SWARMTOOL_FIX_MAX_ATTEMPTS="${SWARMTOOL_FIX_MAX_ATTEMPTS:-3}"
 SWARMTOOL_FIX_BUDGET="${SWARMTOOL_FIX_BUDGET:-5.00}"
 
@@ -455,20 +454,19 @@ run_fixer_agent() {
 
     local system_prompt="You are an expert code fixer. Your job is to fix integration issues in code that was written by multiple workers in parallel. Focus only on fixing the specific issues identified - do not refactor or add features."
 
-    local model="${SWARMTOOL_FIX_MODEL:-sonnet}"
-
-    # Build Claude args
-    local claude_args=(-p)
-    claude_args+=(--model "$model")
-    claude_args+=(--system-prompt "$system_prompt")
-    claude_args+=(--output-format json)
-    claude_args+=(--allowedTools "Read,Edit,Write,Glob,Grep,Bash(npm:*),Bash(node:*)")
-    claude_args+=(--max-turns 30)
+    # Get provider:model spec for fixer
+    local fixer_spec
+    fixer_spec=$(resolve_provider_spec fixer)
 
     printf "${DIM}Running fixer agent...${NC}\n"
 
     local output
-    output=$(cd "$dir" && claude "${claude_args[@]}" "$fix_prompt" 2>&1) || {
+    output=$(cd "$dir" && invoke_llm "$fixer_spec" "$fix_prompt" \
+        --system-prompt "$system_prompt" \
+        --output-format json \
+        --allowed-tools "Read,Edit,Write,Glob,Grep,Bash(npm:*),Bash(node:*)" \
+        --max-turns 30 \
+        2>&1) || {
         printf "${RED}Fixer agent failed${NC}\n"
         return 1
     }

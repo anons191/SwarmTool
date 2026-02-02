@@ -172,10 +172,19 @@ launch_worker() {
     worker_prompt=$(build_worker_prompt "$spec_file" "$run_dir")
 
     # ── Step 3: Determine worker settings ─────────────────────────────────
-    local worker_model budget
-    worker_model=$(taskspec_get "$spec_file" "TASK_WORKER_MODEL")
-    worker_model="${worker_model:-${SWARMTOOL_WORKER_MODEL:-sonnet}}"
+    # Check for task-specific model override first, then fall back to config
+    local task_model_override
+    task_model_override=$(taskspec_get "$spec_file" "TASK_WORKER_MODEL")
 
+    local worker_spec
+    if [[ -n "$task_model_override" ]]; then
+        # Task specifies a model - assume Claude provider for backwards compatibility
+        worker_spec="claude:${task_model_override}"
+    else
+        worker_spec=$(resolve_provider_spec worker)
+    fi
+
+    local budget
     budget=$(taskspec_get "$spec_file" "TASK_BUDGET_USD")
     budget="${budget:-${SWARMTOOL_WORKER_BUDGET:-1.00}}"
 
@@ -183,37 +192,29 @@ launch_worker() {
     local system_prompt=""
     [[ -f "$system_prompt_file" ]] && system_prompt=$(cat "$system_prompt_file")
 
-    # ── Step 4: Invoke Claude Code CLI ────────────────────────────────────
+    # ── Step 4: Invoke LLM ────────────────────────────────────────────────
     # Convert to absolute path for the worktree
     local abs_worktree
     abs_worktree=$(cd "$worktree_path" && pwd)
 
-    local claude_exit_code=0
+    local llm_exit_code=0
 
-    # Build claude command arguments
-    local claude_args=(-p)
-    claude_args+=(--model "$worker_model")
-
-    if [[ -n "$system_prompt" ]]; then
-        claude_args+=(--system-prompt "$system_prompt")
-    fi
-
-    claude_args+=(--output-format json)
-    claude_args+=(--allowedTools "Bash,Edit,Read,Write,Glob,Grep")
-    claude_args+=(--max-turns 50)
-
-    # Execute Claude Code in the worktree directory
+    # Execute LLM in the worktree directory using invoke_llm
     (
         cd "$abs_worktree" || exit 1
-        invoke_claude_with_retry claude "${claude_args[@]}" "$worker_prompt"
+        invoke_claude_with_retry invoke_llm "$worker_spec" "$worker_prompt" \
+            --system-prompt "$system_prompt" \
+            --output-format json \
+            --allowed-tools "Bash,Edit,Read,Write,Glob,Grep" \
+            --max-turns 50
     ) > "$result_file" 2>> "$log_file"
-    claude_exit_code=$?
+    llm_exit_code=$?
 
     # ── Step 5: Capture results ───────────────────────────────────────────
     # Log worktree state after Claude (for debugging)
     echo "" >> "$log_file"
     echo "=== After Claude execution ===" >> "$log_file"
-    echo "Claude exit code: $claude_exit_code" >> "$log_file"
+    echo "Claude exit code: $llm_exit_code" >> "$log_file"
     echo "Worktree path: $abs_worktree" >> "$log_file"
     echo "Worktree contents after Claude:" >> "$log_file"
     ls -la "$abs_worktree" >> "$log_file" 2>&1
@@ -225,7 +226,7 @@ launch_worker() {
     ls -la "${ORIGINAL_PWD}" >> "$log_file" 2>&1
     echo "" >> "$log_file"
 
-    if [[ $claude_exit_code -eq 0 ]]; then
+    if [[ $llm_exit_code -eq 0 ]]; then
         # ── ACQUIRE GIT LOCK for change detection and commit ──
         # This prevents race conditions when multiple workers detect/commit simultaneously
         acquire_git_lock
@@ -274,13 +275,13 @@ launch_worker() {
         max_retries="${max_retries:-${SWARMTOOL_WORKER_MAX_RETRIES:-2}}"
 
         set_task_status "$run_dir" "$task_id" "failed"
-        log "$run_id" "WORKER" "Task ${task_id} FAILED (exit code ${claude_exit_code})"
+        log "$run_id" "WORKER" "Task ${task_id} FAILED (exit code ${llm_exit_code})"
     fi
 
     # ── Step 6: Cleanup PID file ──────────────────────────────────────────
     rm -f "${run_dir}/pids/${task_id}.pid"
 
-    return $claude_exit_code
+    return $llm_exit_code
 }
 
 # ── Execution Phase ─────────────────────────────────────────────────────────

@@ -387,7 +387,9 @@ judge_task() {
     local system_prompt_file="${SWARMTOOL_DIR}/prompts/judge_system.txt"
     [[ -f "$system_prompt_file" ]] && system_prompt=$(cat "$system_prompt_file")
 
-    local judge_model="${SWARMTOOL_JUDGE_MODEL:-sonnet}"
+    # Get provider:model spec for judge
+    local judge_spec
+    judge_spec=$(resolve_provider_spec judge)
     local judge_budget="${SWARMTOOL_JUDGE_BUDGET:-0.50}"
 
     # Determine working directory for the judge
@@ -401,20 +403,14 @@ judge_task() {
     local abs_work_dir
     abs_work_dir=$(cd "$work_dir" 2>/dev/null && pwd) || abs_work_dir="$(pwd)"
 
-    # Invoke Claude Code as judge
-    local claude_args=(-p)
-    claude_args+=(--model "$judge_model")
-
-    if [[ -n "$system_prompt" ]]; then
-        claude_args+=(--system-prompt "$system_prompt")
-    fi
-
-    claude_args+=(--output-format json)
-    claude_args+=(--allowedTools "Read,Glob,Grep,Bash(git\ diff:*),Bash(git\ log:*),Bash(git\ status:*)")
-    claude_args+=(--max-turns 15)
-
+    # Invoke LLM as judge
     local raw_output=""
-    raw_output=$(cd "$abs_work_dir" && claude "${claude_args[@]}" "$judge_prompt" 2>"$judge_log") || {
+    raw_output=$(cd "$abs_work_dir" && invoke_llm "$judge_spec" "$judge_prompt" \
+        --system-prompt "$system_prompt" \
+        --output-format json \
+        --allowed-tools "Read,Glob,Grep,Bash(git\ diff:*),Bash(git\ log:*),Bash(git\ status:*)" \
+        --max-turns 15 \
+        2>"$judge_log") || {
         log "$run_id" "JUDGE" "Judge invocation failed for ${task_id}"
         echo "VERDICT=error" > "$judge_file"
         echo "SUMMARY=Judge invocation failed" >> "$judge_file"

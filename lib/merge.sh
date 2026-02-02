@@ -222,17 +222,17 @@ run_merge_phase() {
             local system_prompt_file="${SWARMTOOL_DIR}/prompts/merge_resolve.txt"
             [[ -f "$system_prompt_file" ]] && system_prompt=$(cat "$system_prompt_file")
 
-            local merge_model="${SWARMTOOL_MERGE_MODEL:-sonnet}"
+            # Get provider:model spec for merger
+            local merger_spec
+            merger_spec=$(resolve_provider_spec merger)
             local merge_budget="${SWARMTOOL_MERGE_BUDGET:-0.50}"
 
-            # Invoke Claude Code to resolve conflicts
-            local claude_args=(-p)
-            claude_args+=(--model "$merge_model")
-            [[ -n "$system_prompt" ]] && claude_args+=(--system-prompt "$system_prompt")
-            claude_args+=(--allowedTools "Read,Edit,Glob,Grep,Bash(git\ diff:*),Bash(git\ status:*)")
-            claude_args+=(--max-turns 20)
-
-            claude "${claude_args[@]}" "$merge_prompt" >>"$merge_log" 2>&1 || true
+            # Invoke LLM to resolve conflicts
+            invoke_llm "$merger_spec" "$merge_prompt" \
+                --system-prompt "$system_prompt" \
+                --allowed-tools "Read,Edit,Glob,Grep,Bash(git\ diff:*),Bash(git\ status:*)" \
+                --max-turns 20 \
+                >>"$merge_log" 2>&1 || true
 
             # Check if conflicts are resolved
             local remaining_conflicts

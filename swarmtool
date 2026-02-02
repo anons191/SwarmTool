@@ -12,6 +12,7 @@ SWARMTOOL_DIR="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")" 
 # ── Source Libraries ────────────────────────────────────────────────────────
 source "${SWARMTOOL_DIR}/lib/core.sh"
 source "${SWARMTOOL_DIR}/lib/config.sh"
+source "${SWARMTOOL_DIR}/lib/providers.sh"
 source "${SWARMTOOL_DIR}/lib/state.sh"
 source "${SWARMTOOL_DIR}/lib/taskspec.sh"
 source "${SWARMTOOL_DIR}/lib/scale.sh"
@@ -34,6 +35,7 @@ RESUME_RUN_ID=""
 DRY_RUN=false
 VERBOSE=false
 SHOW_CONFIG=false
+SHOW_PROVIDERS=false
 LIST_RUNS=false
 FIX_MODE=false
 FIX_DIR="."
@@ -56,28 +58,48 @@ ${BOLD}OPTIONS${NC}
     --list                List all runs and their status
     --fix [dir]           Fix integration issues in merged code (default: current dir)
     --max-workers <n>     Set max concurrent workers (default: auto)
-    --planner-model <m>   Model for planner (default: opus)
-    --worker-model <m>    Model for workers (default: sonnet)
-    --judge-model <m>     Model for judge (default: sonnet)
+
+    ${BOLD}Provider Options${NC} (format: provider:model, e.g., "claude:opus", "ollama:qwen2")
+    --planner <spec>      Provider:model for planner (default: claude:opus)
+    --worker <spec>       Provider:model for workers (default: claude:sonnet)
+    --judge <spec>        Provider:model for judge (default: claude:opus)
+    --fixer <spec>        Provider:model for fixer (default: claude:opus)
+    --merger <spec>       Provider:model for merger (default: claude:opus)
+
+    ${BOLD}Legacy Options${NC} (Claude-only, for backwards compatibility)
+    --planner-model <m>   Model for planner (e.g., opus)
+    --worker-model <m>    Model for workers (e.g., sonnet)
+    --judge-model <m>     Model for judge (e.g., opus)
+
     --budget <usd>        Total budget cap in USD (default: 20.00)
     --dry-run             Show plan without executing
     --auto-approve, -y    Auto-approve all steps after plan approval
     --verbose             Show detailed output including resource detection
     --config              Show current configuration and exit
+    --providers           List available LLM providers and their status
     --help                Show this help message
 
 ${BOLD}EXAMPLES${NC}
     swarmtool "Add user authentication with JWT"
     swarmtool --goal "Refactor the database layer" --max-workers 3
+    swarmtool --worker ollama:qwen2 --judge openai:gpt-4o "Build a todo app"
     swarmtool --resume abc12345
     swarmtool --fix                    # Fix integration issues in current directory
     swarmtool --list
+    swarmtool --providers              # List available LLM providers
+
+${BOLD}PROVIDERS${NC}
+    claude     Claude via Claude Code CLI (default)
+    openai     OpenAI API (requires OPENAI_API_KEY)
+    openrouter OpenRouter API (requires OPENROUTER_API_KEY)
+    ollama     Local Ollama server (requires Ollama running)
+    lmstudio   Local LM Studio server (requires LM Studio running)
 
 ${BOLD}ARCHITECTURE${NC}
-    Planner (opus)  -->  Creates isolated task specs
-    Workers (sonnet) -->  Execute in git worktrees, no coordination
-    Judge (sonnet)  -->  Automated checks + AI evaluation
-    Merge           -->  Auto-merge + conflict resolution
+    Planner (claude:opus)  -->  Creates isolated task specs
+    Workers (claude:sonnet) -->  Execute in git worktrees, no coordination
+    Judge (claude:opus)  -->  Automated checks + AI evaluation
+    Merge                -->  Auto-merge + conflict resolution
 
 ${BOLD}CONFIGURATION${NC}
     Config precedence: defaults.conf < .swarmtool/config < env vars < CLI flags
@@ -130,7 +152,11 @@ while [[ $# -gt 0 ]]; do
             SHOW_CONFIG=true
             shift
             ;;
-        --max-workers|--planner-model|--worker-model|--judge-model|--budget|--state-dir)
+        --providers)
+            SHOW_PROVIDERS=true
+            shift
+            ;;
+        --max-workers|--planner|--worker|--judge|--fixer|--merger|--planner-model|--worker-model|--judge-model|--budget|--state-dir)
             apply_cli_overrides "$1" "$2"
             shift 2
             ;;
@@ -156,6 +182,11 @@ load_config "$SWARMTOOL_DIR"
 
 if [[ "$SHOW_CONFIG" == "true" ]]; then
     dump_config
+    exit 0
+fi
+
+if [[ "$SHOW_PROVIDERS" == "true" ]]; then
+    list_providers
     exit 0
 fi
 

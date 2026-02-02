@@ -216,11 +216,11 @@ invoke_claude() {
     # Could use --max-budget-usd as an alternative limiter
 
     # Execute in working directory if specified
-    # Pipe prompt via stdin for reliability with long/complex prompts
+    # Use printf to handle long prompts with special characters reliably
     if [[ -n "$working_dir" ]]; then
-        (cd "$working_dir" && echo "$prompt" | claude "${claude_args[@]}")
+        (cd "$working_dir" && printf '%s' "$prompt" | claude "${claude_args[@]}")
     else
-        echo "$prompt" | claude "${claude_args[@]}"
+        printf '%s' "$prompt" | claude "${claude_args[@]}"
     fi
 }
 

@@ -58,12 +58,8 @@ run_planning_phase() {
         show_architecture_inline "planning"
     fi
 
-    # Start spinner for planning phase
-    if type spinner_start &>/dev/null; then
-        spinner_start "${BOLD}Planning...${NC} Analyzing codebase and decomposing goal"
-    else
-        printf "${BOLD}Planning...${NC} Analyzing codebase and decomposing goal.\n"
-    fi
+    # Show planning status (no spinner - spinners interfere with command substitution output capture)
+    printf "${BOLD}Planning...${NC} Analyzing codebase and decomposing goal.\n"
 
     # Build the planner prompt (includes requirements.md if it exists from interview)
     local planner_prompt
@@ -89,16 +85,12 @@ run_planning_phase() {
         --allowed-tools "Read,Glob,Grep,Bash" \
         --max-turns 30 \
         2>"$planner_log") || {
-        # Stop spinner on failure
-        type spinner_stop &>/dev/null && spinner_stop
         log "$run_id" "PLANNER" "Planner invocation failed"
         log_error "Planner failed. See ${planner_log} for details."
         set_run_state "$run_dir" "failed"
         return 1
     }
 
-    # Stop spinner after planning completes
-    type spinner_stop &>/dev/null && spinner_stop
     echo ""
 
     # Parse the planner output

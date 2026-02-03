@@ -282,6 +282,50 @@ validate_against_registry() {
     echo "$issues"
 }
 
+# Verify all js_exports files exist with correct exports
+# Usage: verify_js_exports <worktree> <run_dir>
+verify_js_exports() {
+    local worktree="$1"
+    local run_dir="$2"
+    local registry_file="${run_dir}/interfaces.json"
+    local errors=""
+
+    [[ ! -f "$registry_file" ]] && echo "" && return 0
+
+    # Get js_exports as key-value pairs
+    local exports
+    exports=$(jq -r '.js_exports // {} | to_entries[] | "\(.key)|\(.value)"' "$registry_file" 2>/dev/null)
+
+    [[ -z "$exports" ]] && echo "" && return 0
+
+    while IFS='|' read -r filepath expected_export; do
+        [[ -z "$filepath" ]] && continue
+
+        local full_path="${worktree}/${filepath}"
+
+        # Check file exists
+        if [[ ! -f "$full_path" ]]; then
+            errors="${errors}MISSING_EXPORT_FILE: ${filepath} specified in js_exports but file not created; "
+            continue
+        fi
+
+        # Check exports exist (basic grep check)
+        if [[ -n "$expected_export" ]]; then
+            # Extract function names from export statement
+            local funcs
+            funcs=$(echo "$expected_export" | grep -oE '\b[a-zA-Z_][a-zA-Z0-9_]*\b' | grep -vE '^(export|default)$')
+            for func in $funcs; do
+                [[ -z "$func" ]] && continue
+                if ! grep -qE "(function\s+${func}|const\s+${func}|let\s+${func}|var\s+${func}|export\s+.*${func})" "$full_path" 2>/dev/null; then
+                    errors="${errors}MISSING_EXPORT: ${filepath} should export '${func}' but function not found; "
+                fi
+            done
+        fi
+    done <<< "$exports"
+
+    echo "$errors"
+}
+
 # Run functional tests for web projects
 # Usage: run_functional_tests <worktree_path> [run_dir]
 run_functional_tests() {
@@ -352,6 +396,11 @@ run_functional_tests() {
         local registry_issues
         registry_issues=$(validate_against_registry "$dir" "$run_dir")
         [[ -n "$registry_issues" ]] && issues="${issues}${registry_issues}"
+
+        # Verify js_exports files exist
+        local export_issues
+        export_issues=$(verify_js_exports "$dir" "$run_dir")
+        [[ -n "$export_issues" ]] && issues="${issues}${export_issues}"
     fi
 
     echo "$issues"

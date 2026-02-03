@@ -363,6 +363,21 @@ analyze_integration_issues() {
                 fi
             fi
         fi
+
+        # Check js_exports files exist (from interface registry)
+        # Find the most recent interfaces.json in .swarmtool/runs
+        local registry_file
+        registry_file=$(find .swarmtool/runs -name "interfaces.json" -type f 2>/dev/null | head -1)
+        if [[ -f "$registry_file" ]]; then
+            local js_exports
+            js_exports=$(jq -r '.js_exports // {} | keys[]' "$registry_file" 2>/dev/null)
+            for filepath in $js_exports; do
+                [[ -z "$filepath" ]] && continue
+                if [[ ! -f "$filepath" ]]; then
+                    echo "MISSING_MODULE: ${filepath} defined in interface registry but file not created"
+                fi
+            done
+        fi
     )
 }
 
